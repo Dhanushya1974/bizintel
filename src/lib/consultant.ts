@@ -1,9 +1,19 @@
 import { OPPORTUNITIES } from "@/lib/mock-data";
 import type { User } from "@/lib/auth";
 
-const API_URL =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-  "http://localhost:4000";
+const CONFIGURED_API_URL =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || "";
+
+/** Where to reach the consultant backend. Falls back to the local dev server, but
+ *  only when the app itself is running on localhost — on a deployed host with no
+ *  VITE_API_URL configured we skip the (doomed) request and answer client-side. */
+function resolveApiUrl(): string | null {
+  if (CONFIGURED_API_URL) return CONFIGURED_API_URL.replace(/\/+$/, "");
+  if (typeof window !== "undefined" && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {
+    return "http://localhost:4000";
+  }
+  return null;
+}
 
 export type ChatMsg = { role: "user" | "assistant"; content: string };
 
@@ -69,8 +79,12 @@ function offlineAnswer(question: string, ctx: Ctx): string {
 
 export async function askConsultant(messages: ChatMsg[], ctx: Ctx): Promise<ConsultantReply> {
   const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  const apiUrl = resolveApiUrl();
+  if (!apiUrl) {
+    return { text: offlineAnswer(lastUser, ctx), provider: "offline" };
+  }
   try {
-    const res = await fetch(`${API_URL}/api/consultant`, {
+    const res = await fetch(`${apiUrl}/api/consultant`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ messages, context: ctx }),

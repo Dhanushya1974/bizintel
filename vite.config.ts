@@ -12,4 +12,9 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // Deploy target for `vite build` outside the Lovable sandbox (e.g. Vercel).
+  // Lovable's own builds force `cloudflare-module` and ignore this.
+  nitro: {
+    preset: "vercel",
+  },
 });
