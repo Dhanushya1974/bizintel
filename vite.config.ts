@@ -14,7 +14,8 @@ export default defineConfig({
   },
   // Deploy target for `vite build` outside the Lovable sandbox (e.g. Vercel).
   // Lovable's own builds force `cloudflare-module` and ignore this.
+  // The Docker image sets NITRO_PRESET=node-server so it gets a plain Node server.
   nitro: {
-    preset: "vercel",
+    preset: process.env.NITRO_PRESET || process.env.SERVER_PRESET || "vercel",
   },
 });

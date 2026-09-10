@@ -29,6 +29,13 @@ export type User = {
   idea?: string;
   /** Opportunity the user picked from AI recommendations (mode === "ai"). */
   focusOpportunityId?: string;
+  /** Candidate site coordinates — from a pasted Google Maps link (exact pin). */
+  siteLat?: number;
+  siteLng?: number;
+  siteLabel?: string;
+  /** Approximate coordinates geocoded from the user's city / pincode. */
+  geoLat?: number;
+  geoLng?: number;
 };
 
 type AuthState = {

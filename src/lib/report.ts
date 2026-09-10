@@ -1,65 +1,131 @@
 import {
-  COMPETITORS,
-  DEMAND_TIMESERIES,
-  DEMOGRAPHICS,
   OPPORTUNITIES,
   REVENUE_FORECAST,
   SAVED_PROJECTS,
+  type Competitor,
   type Opportunity,
-  type SavedProject,
 } from "@/lib/mock-data";
+import { getProject } from "@/lib/projects";
+import {
+  competitorsFor,
+  demandTimeseries,
+  demographics,
+  insightsFor,
+  resolveFocusOpportunity,
+  siteScore,
+} from "@/lib/opportunity-insights";
 
 export type ProjectReport = {
-  project: SavedProject;
+  project: {
+    id: string;
+    title: string;
+    location: string;
+    businessType: string;
+    status: string;
+    score: number;
+  };
   opportunity: Opportunity;
   generatedAt: string;
   demographics: { label: string; value: string }[];
   demand: { month: string; demand: number; competition: number }[];
-  competitors: typeof COMPETITORS;
+  competitors: Competitor[];
   siteScore: { label: string; value: number }[];
   forecast: { month: string; revenue: number; cost: number }[];
   insights: { tag: string; title: string; body: string }[];
 };
 
-const SITE_SCORE = [
-  { label: "Foot traffic", value: 88 },
-  { label: "Demand match", value: 81 },
-  { label: "Competition", value: 62 },
-  { label: "Accessibility", value: 79 },
-];
+type ReportBase = {
+  id: string;
+  title: string;
+  location: string;
+  businessType: string;
+  status: string;
+  opportunity: Opportunity;
+};
 
-const INSIGHTS = [
-  { tag: "Trend", title: "Wellness & specialty F&B demand rising", body: "Search intent for premium, experience-led concepts is up double digits year over year in this market." },
-  { tag: "Recommendation", title: "Differentiate on food and mornings", body: "The strongest unmet demand is in the AM daypart — pair the core concept with a bakery or grab-and-go line." },
-  { tag: "Risk watch", title: "Lease rates trending up", body: "Prime frontage in the target radius has appreciated ~8% in 12 months. Lock terms early." },
-];
+/**
+ * Assemble the full consolidated report from a single focused opportunity, using
+ * the exact same derivations the Market / Competitors / Location / Insights tabs
+ * render — so the downloaded report always matches what's on screen.
+ */
+function assemble(base: ReportBase): ProjectReport {
+  const o = base.opportunity;
+  const site = siteScore(o);
+  return {
+    project: {
+      id: base.id,
+      title: base.title,
+      location: base.location,
+      businessType: base.businessType,
+      status: base.status,
+      score: o.score,
+    },
+    opportunity: o,
+    generatedAt: new Date().toISOString().slice(0, 10),
+    demographics: demographics(o),
+    demand: demandTimeseries(o),
+    competitors: competitorsFor(o),
+    siteScore: site.rows.map((r) => ({ label: r.l, value: r.v })),
+    forecast: REVENUE_FORECAST,
+    insights: insightsFor(o).map((i) => ({ tag: i.tag, title: i.title, body: i.body })),
+  };
+}
 
-/** Pick the opportunity whose score is closest to the saved project's score. */
-function matchOpportunity(project: SavedProject): Opportunity {
+/** Pick the opportunity whose score is closest to a demo project's score. */
+function matchOpportunity(score: number): Opportunity {
   return [...OPPORTUNITIES].sort(
-    (a, b) => Math.abs(a.score - project.score) - Math.abs(b.score - project.score),
+    (a, b) => Math.abs(a.score - score) - Math.abs(b.score - score),
   )[0];
 }
 
+/** Resolve `/projects/$id` — a real saved project first, then the demo set. */
 export function getProjectReport(id: string): ProjectReport | null {
-  const project = SAVED_PROJECTS.find((p) => p.id === id);
-  if (!project) return null;
-  return {
-    project,
-    opportunity: matchOpportunity(project),
-    generatedAt: new Date().toISOString().slice(0, 10),
-    demographics: DEMOGRAPHICS,
-    demand: DEMAND_TIMESERIES,
-    competitors: COMPETITORS,
-    siteScore: SITE_SCORE,
-    forecast: REVENUE_FORECAST,
-    insights: INSIGHTS,
-  };
+  const real = getProject(id);
+  if (real) {
+    return assemble({
+      id: real.id,
+      title: real.title,
+      location: real.location,
+      businessType: real.businessType,
+      status: real.status,
+      opportunity: resolveFocusOpportunity({
+        focusOpportunityId: real.focusOpportunityId,
+        industry: real.category,
+      }),
+    });
+  }
+  const demo = SAVED_PROJECTS.find((p) => p.id === id);
+  if (!demo) return null;
+  return assemble({
+    id: demo.id,
+    title: demo.title,
+    location: demo.location,
+    businessType: demo.businessType,
+    status: demo.status,
+    opportunity: matchOpportunity(demo.score),
+  });
+}
+
+/** Build a consolidated report on the fly (no saved project needed). */
+export function adHocReport(input: {
+  opportunity: Opportunity;
+  title: string;
+  location: string;
+  businessType: string;
+}): ProjectReport {
+  return assemble({
+    id: "adhoc",
+    title: input.title,
+    location: input.location,
+    businessType: input.businessType,
+    status: "Complete",
+    opportunity: input.opportunity,
+  });
 }
 
 const money = (n: number) => `$${n.toLocaleString()}`;
 
-/** A self-contained HTML document with every section — used for the "Download file" action. */
+/** A self-contained HTML document with every section — used for the "Download" action. */
 export function buildReportHtml(r: ProjectReport): string {
   const { project: p, opportunity: o } = r;
   const rows = (cells: (string | number)[][]) =>
@@ -147,7 +213,7 @@ export function buildReportHtml(r: ProjectReport): string {
 }
 
 const slug = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bizintel";
 
 /** Build the consolidated report as one HTML file and trigger a browser download. */
 export function downloadReport(r: ProjectReport) {

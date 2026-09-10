@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Lightbulb, Sparkles } from "lucide-react";
+import { Lightbulb, Loader2, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/brand/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { geocodeLocation } from "@/lib/geo";
 
 const MODES = [
   { id: "own-idea" as const, label: "I have my own idea", icon: Lightbulb },
@@ -38,12 +40,45 @@ export const Route = createFileRoute("/_app/settings")({
 function Settings() {
   const { user, updateUser } = useAuth();
   const mode = user?.mode ?? "own-idea";
+  const [city, setCity] = useState(user?.city ?? "");
+  const [pincode, setPincode] = useState(user?.pincode ?? "");
+  const [pinBusy, setPinBusy] = useState(false);
+
+  /** On pincode blur: persist it, then fill in city + coordinates from the geocoder. */
+  const applyPincode = async (pin: string) => {
+    updateUser({ pincode: pin });
+    if (!/^\d{4,}$/.test(pin.trim())) return;
+    setPinBusy(true);
+    try {
+      const g = await geocodeLocation({ pincode: pin.trim(), country: user?.country });
+      // pincode is the primary location — drop any stale exact map pin
+      const patch: Parameters<typeof updateUser>[0] = {
+        geoLat: g.latitude,
+        geoLng: g.longitude,
+        siteLat: undefined,
+        siteLng: undefined,
+        siteLabel: undefined,
+      };
+      if (g.address?.city) {
+        patch.city = g.address.city;
+        setCity(g.address.city);
+      }
+      if (g.address?.state) patch.state = g.address.state;
+      updateUser(patch);
+      toast.success("Location updated on the map");
+    } catch {
+      /* geocoder unavailable — leave fields as typed */
+    } finally {
+      setPinBusy(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader title="Settings" description="Manage your account, workspace, and preferences." />
       <div className="p-4 sm:p-8">
         <Tabs defaultValue="account">
-          <TabsList><TabsTrigger value="account">Account</TabsTrigger><TabsTrigger value="notif">Notifications</TabsTrigger><TabsTrigger value="billing">Billing</TabsTrigger></TabsList>
+          <TabsList><TabsTrigger value="account">Account</TabsTrigger><TabsTrigger value="notif">Notifications</TabsTrigger></TabsList>
           <TabsContent value="account" className="mt-4 space-y-4">
             <Card>
               <CardHeader><CardTitle>Dashboard mode</CardTitle></CardHeader>
@@ -104,22 +139,29 @@ function Settings() {
                     </Select>
                   </div>
                   <div className="space-y-1.5">
+                    <Label htmlFor="pincode">Pincode</Label>
+                    <div className="relative">
+                      <Input
+                        id="pincode"
+                        inputMode="numeric"
+                        placeholder="e.g. 411001"
+                        value={pincode}
+                        onChange={(e) => setPincode(e.target.value)}
+                        onBlur={(e) => applyPincode(e.target.value)}
+                      />
+                      {pinBusy && (
+                        <Loader2 className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
                     <Label htmlFor="city">City</Label>
                     <Input
                       id="city"
-                      placeholder="e.g. Mumbai"
-                      defaultValue={user?.city}
+                      placeholder="Fills in from pincode"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
                       onBlur={(e) => updateUser({ city: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="pincode">Pincode</Label>
-                    <Input
-                      id="pincode"
-                      inputMode="numeric"
-                      placeholder="e.g. 400001"
-                      defaultValue={user?.pincode}
-                      onBlur={(e) => updateUser({ pincode: e.target.value })}
                     />
                   </div>
                 </div>
@@ -143,9 +185,6 @@ function Settings() {
                 <div key={l} className="flex items-center justify-between"><Label>{l}</Label><Switch defaultChecked /></div>
               ))}
             </CardContent></Card>
-          </TabsContent>
-          <TabsContent value="billing" className="mt-4">
-            <Card><CardHeader><CardTitle>Explorer plan</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">You're on the free Explorer plan. Upgrade for live data and full reports.</p><Button variant="outline" className="mt-4">Manage billing</Button></CardContent></Card>
           </TabsContent>
         </Tabs>
       </div>

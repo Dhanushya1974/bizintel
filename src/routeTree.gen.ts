@@ -13,13 +13,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as SetupRouteImport } from './routes/setup'
-import { Route as AppCollaborationsRouteImport } from './routes/_app.collaborations'
 import { Route as AppConsultantRouteImport } from './routes/_app.consultant'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppHelpRouteImport } from './routes/_app.help'
 import { Route as AppNotificationsRouteImport } from './routes/_app.notifications'
 import { Route as AppOpportunitiesRouteImport } from './routes/_app.opportunities'
-import { Route as AppPricingRouteImport } from './routes/_app.pricing'
 import { Route as AppProfileRouteImport } from './routes/_app.profile'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
@@ -51,11 +49,6 @@ const SetupRoute = SetupRouteImport.update({
   path: '/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppCollaborationsRoute = AppCollaborationsRouteImport.update({
-  id: '/collaborations',
-  path: '/collaborations',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppConsultantRoute = AppConsultantRouteImport.update({
   id: '/consultant',
   path: '/consultant',
@@ -79,11 +72,6 @@ const AppNotificationsRoute = AppNotificationsRouteImport.update({
 const AppOpportunitiesRoute = AppOpportunitiesRouteImport.update({
   id: '/opportunities',
   path: '/opportunities',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppPricingRoute = AppPricingRouteImport.update({
-  id: '/pricing',
-  path: '/pricing',
   getParentRoute: () => AppRoute,
 } as any)
 const AppProfileRoute = AppProfileRouteImport.update({
@@ -150,13 +138,11 @@ const AppProjectsIdRoute = AppProjectsIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/setup': typeof SetupRoute
-  '/collaborations': typeof AppCollaborationsRoute
   '/consultant': typeof AppConsultantRoute
   '/dashboard': typeof AppDashboardRoute
   '/help': typeof AppHelpRoute
   '/notifications': typeof AppNotificationsRoute
   '/opportunities': typeof AppOpportunitiesRouteWithChildren
-  '/pricing': typeof AppPricingRoute
   '/profile': typeof AppProfileRoute
   '/projects': typeof AppProjectsRouteWithChildren
   '/settings': typeof AppSettingsRoute
@@ -173,12 +159,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/setup': typeof SetupRoute
-  '/collaborations': typeof AppCollaborationsRoute
   '/consultant': typeof AppConsultantRoute
   '/dashboard': typeof AppDashboardRoute
   '/help': typeof AppHelpRoute
   '/notifications': typeof AppNotificationsRoute
-  '/pricing': typeof AppPricingRoute
   '/profile': typeof AppProfileRoute
   '/settings': typeof AppSettingsRoute
   '/forgot': typeof AuthForgotRoute
@@ -197,13 +181,11 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
   '/setup': typeof SetupRoute
-  '/_app/collaborations': typeof AppCollaborationsRoute
   '/_app/consultant': typeof AppConsultantRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/help': typeof AppHelpRoute
   '/_app/notifications': typeof AppNotificationsRoute
   '/_app/opportunities': typeof AppOpportunitiesRouteWithChildren
-  '/_app/pricing': typeof AppPricingRoute
   '/_app/profile': typeof AppProfileRoute
   '/_app/projects': typeof AppProjectsRouteWithChildren
   '/_app/settings': typeof AppSettingsRoute
@@ -222,13 +204,11 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/setup'
-    | '/collaborations'
     | '/consultant'
     | '/dashboard'
     | '/help'
     | '/notifications'
     | '/opportunities'
-    | '/pricing'
     | '/profile'
     | '/projects'
     | '/settings'
@@ -245,12 +225,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/setup'
-    | '/collaborations'
     | '/consultant'
     | '/dashboard'
     | '/help'
     | '/notifications'
-    | '/pricing'
     | '/profile'
     | '/settings'
     | '/forgot'
@@ -268,13 +246,11 @@ export interface FileRouteTypes {
     | '/_app'
     | '/_auth'
     | '/setup'
-    | '/_app/collaborations'
     | '/_app/consultant'
     | '/_app/dashboard'
     | '/_app/help'
     | '/_app/notifications'
     | '/_app/opportunities'
-    | '/_app/pricing'
     | '/_app/profile'
     | '/_app/projects'
     | '/_app/settings'
@@ -326,13 +302,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SetupRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/collaborations': {
-      id: '/_app/collaborations'
-      path: '/collaborations'
-      fullPath: '/collaborations'
-      preLoaderRoute: typeof AppCollaborationsRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/consultant': {
       id: '/_app/consultant'
       path: '/consultant'
@@ -366,13 +335,6 @@ declare module '@tanstack/react-router' {
       path: '/opportunities'
       fullPath: '/opportunities'
       preLoaderRoute: typeof AppOpportunitiesRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/pricing': {
-      id: '/_app/pricing'
-      path: '/pricing'
-      fullPath: '/pricing'
-      preLoaderRoute: typeof AppPricingRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/profile': {
@@ -490,13 +452,11 @@ const AppProjectsRouteWithChildren = AppProjectsRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
-  AppCollaborationsRoute: typeof AppCollaborationsRoute
   AppConsultantRoute: typeof AppConsultantRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppHelpRoute: typeof AppHelpRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
   AppOpportunitiesRoute: typeof AppOpportunitiesRouteWithChildren
-  AppPricingRoute: typeof AppPricingRoute
   AppProfileRoute: typeof AppProfileRoute
   AppProjectsRoute: typeof AppProjectsRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
@@ -504,13 +464,11 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppCollaborationsRoute: AppCollaborationsRoute,
   AppConsultantRoute: AppConsultantRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppHelpRoute: AppHelpRoute,
   AppNotificationsRoute: AppNotificationsRoute,
   AppOpportunitiesRoute: AppOpportunitiesRouteWithChildren,
-  AppPricingRoute: AppPricingRoute,
   AppProfileRoute: AppProfileRoute,
   AppProjectsRoute: AppProjectsRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,

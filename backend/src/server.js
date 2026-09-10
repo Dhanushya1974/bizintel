@@ -3,14 +3,20 @@ import express from "express";
 import cors from "cors";
 import { pool, waitForDb } from "./db.js";
 import { chat } from "./consultant.js";
+import { resolveMapsLink, geocode, nearby, siteScore } from "./geo.js";
 
 const PORT = Number(process.env.PORT || 4000);
 const CORS_ORIGIN =
   process.env.CORS_ORIGIN ||
   "http://localhost:3000,http://localhost:8080,http://localhost:8081";
 
+// CORS_ORIGIN="*" reflects any origin (handy for tunnels / demos); otherwise it's
+// a comma-separated allow-list.
+const corsOrigin =
+  CORS_ORIGIN.trim() === "*" ? true : CORS_ORIGIN.split(",").map((s) => s.trim());
+
 const app = express();
-app.use(cors({ origin: CORS_ORIGIN.split(",").map((s) => s.trim()) }));
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 // --- health ---------------------------------------------------------------
@@ -65,6 +71,41 @@ app.post("/api/consultant", async (req, res) => {
     res.json(out);
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// --- geolocation ------------------------------------------------------
+app.post("/api/resolve-maps-link", async (req, res) => {
+  const { maps_link: mapsLink } = req.body ?? {};
+  try {
+    res.json(await resolveMapsLink(mapsLink));
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+});
+
+app.post("/api/geocode", async (req, res) => {
+  const { city, pincode, state, country } = req.body ?? {};
+  try {
+    res.json(await geocode({ city, pincode, state, country }));
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+});
+
+app.get("/api/nearby", async (req, res) => {
+  try {
+    res.json(await nearby(req.query));
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+});
+
+app.get("/api/site-score", async (req, res) => {
+  try {
+    res.json(await siteScore(req.query));
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
 });
 

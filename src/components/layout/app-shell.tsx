@@ -3,9 +3,7 @@ import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-route
 import {
   Bell,
   ChevronDown,
-  CreditCard,
   FileText,
-  Handshake,
   HelpCircle,
   LayoutDashboard,
   LogOut,
@@ -14,7 +12,6 @@ import {
   Settings,
   Sparkles,
   Target,
-  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
@@ -33,18 +30,14 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth, useRequireAuth } from "@/lib/auth";
 import { NOTIFICATIONS } from "@/lib/mock-data";
-import { PLANS } from "@/lib/mock-data";
-import { usePlan } from "@/lib/plan";
 
 const NAV: { label: string; to: string; icon: React.ComponentType<{ className?: string }>; badge?: string }[] = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
   { label: "Opportunities", to: "/opportunities", icon: Target },
-  { label: "Collaborations", to: "/collaborations", icon: Handshake },
   { label: "Projects & Reports", to: "/projects", icon: FileText },
 ];
 
 const SECONDARY: { label: string; to: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { label: "Plans & Billing", to: "/pricing", icon: CreditCard },
   { label: "Notifications", to: "/notifications", icon: Bell },
   { label: "Settings", to: "/settings", icon: Settings },
   { label: "Help & Support", to: "/help", icon: HelpCircle },
@@ -93,8 +86,6 @@ function NavItem({
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (to: string) => pathname === to || pathname.startsWith(to + "/");
-  const { plan, isFree } = usePlan();
-  const planName = PLANS.find((p) => p.id === plan)?.name ?? "Explorer";
   return (
     <nav className="flex h-full flex-col gap-6 p-4">
       <Logo />
@@ -113,19 +104,6 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         {SECONDARY.map((n) => (
           <NavItem key={n.to} {...n} active={isActive(n.to)} onNavigate={onNavigate} />
         ))}
-        {isFree && (
-          <Link
-            to="/pricing"
-            onClick={onNavigate}
-            className="mt-2 flex flex-col gap-1 rounded-xl bg-[color:var(--color-navy)] p-3 text-white"
-          >
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-[color:var(--color-teal)]">
-              <Zap className="h-3 w-3" /> {planName} plan
-            </div>
-            <p className="text-sm font-semibold">Upgrade to unlock premium</p>
-            <p className="text-[11px] text-white/70">Unlimited AI, live market data & reports.</p>
-          </Link>
-        )}
       </div>
     </nav>
   );

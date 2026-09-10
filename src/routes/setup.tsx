@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { ArrowLeft, Check, Lightbulb, MapPin, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, Check, Lightbulb, Loader2, MapPin, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,7 @@ import { ScoreRing } from "@/components/brand/score-ring";
 import { cn } from "@/lib/utils";
 import { useAuth, useRequireAuth } from "@/lib/auth";
 import { recommendIdeas, type Recommendation } from "@/lib/recommend";
+import { geocodeLocation } from "@/lib/geo";
 
 export const Route = createFileRoute("/setup")({
   head: () => ({ meta: [{ title: "Get started — BizIntel" }] }),
@@ -63,8 +64,28 @@ function Setup() {
 
   const [analysing, setAnalysing] = useState(false);
   const [results, setResults] = useState<Recommendation[]>([]);
+  const [pinBusy, setPinBusy] = useState(false);
+  const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
 
   if (!user) return null;
+
+  /** On pincode blur: fill in city + state and remember coordinates for the map. */
+  const autofillFromPincode = async (pin: string) => {
+    const p = pin.trim();
+    if (!/^\d{4,}$/.test(p)) return;
+    setPinBusy(true);
+    try {
+      const g = await geocodeLocation({ pincode: p, country });
+      setGeo({ lat: g.latitude, lng: g.longitude });
+      if (g.address?.city) setCity(g.address.city);
+      if (g.address?.state) setStateName(g.address.state);
+      if (g.address?.country && !country) setCountry(g.address.country);
+    } catch {
+      /* geocoder unavailable — user can still type city / state */
+    } finally {
+      setPinBusy(false);
+    }
+  };
 
   const persist = (patch: Parameters<typeof updateUser>[0]) => {
     updateUser({
@@ -75,6 +96,8 @@ function Setup() {
       budget,
       industry: category === "Any" ? "" : category,
       onboarded: true,
+      // pincode is the primary location — clear any stale exact map pin
+      ...(geo ? { geoLat: geo.lat, geoLng: geo.lng, siteLat: undefined, siteLng: undefined, siteLabel: undefined } : {}),
       ...patch,
     });
     navigate({ to: "/dashboard" });
@@ -186,18 +209,33 @@ function Setup() {
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="space-y-1.5">
-                      <Label htmlFor="state">State</Label>
-                      <Input id="state" placeholder="e.g. Maharashtra" value={stateName} onChange={(e) => setStateName(e.target.value)} />
+                      <Label htmlFor="pincode">Pincode</Label>
+                      <div className="relative">
+                        <Input
+                          id="pincode"
+                          inputMode="numeric"
+                          placeholder="e.g. 411001"
+                          value={pincode}
+                          onChange={(e) => setPincode(e.target.value)}
+                          onBlur={(e) => autofillFromPincode(e.target.value)}
+                        />
+                        {pinBusy && (
+                          <Loader2 className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="city">City</Label>
-                      <Input id="city" placeholder="e.g. Mumbai" value={city} onChange={(e) => setCity(e.target.value)} />
+                      <Input id="city" placeholder="Fills in from pincode" value={city} onChange={(e) => setCity(e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="pincode">Pincode</Label>
-                      <Input id="pincode" inputMode="numeric" placeholder="e.g. 400001" value={pincode} onChange={(e) => setPincode(e.target.value)} />
+                      <Label htmlFor="state">State</Label>
+                      <Input id="state" placeholder="Fills in from pincode" value={stateName} onChange={(e) => setStateName(e.target.value)} />
                     </div>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Enter your pincode — we'll fill in the city and state automatically.
+                  </p>
                 </CardContent>
               </Card>
 

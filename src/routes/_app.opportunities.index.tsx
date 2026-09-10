@@ -1,6 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Bookmark, BookmarkCheck, Download, Filter, Search } from "lucide-react";
+import { ArrowRight, Bookmark, BookmarkCheck, Download, Filter, Save, Search } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/brand/page-header";
 import { ScoreRing } from "@/components/brand/score-ring";
@@ -12,8 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OPPORTUNITIES, type Opportunity } from "@/lib/mock-data";
+import { useAuth } from "@/lib/auth";
+import { resolveFocusOpportunity } from "@/lib/opportunity-insights";
 import { useSavedOpportunities } from "@/lib/saved";
-import { downloadOpportunity } from "@/lib/report";
+import { useProjects } from "@/lib/projects";
+import { adHocReport, downloadOpportunity, downloadReport } from "@/lib/report";
 import { MarketPanel } from "@/components/opportunities/market-panel";
 import { CompetitorsPanel } from "@/components/opportunities/competitors-panel";
 import { LocationPanel } from "@/components/opportunities/location-panel";
@@ -30,6 +33,18 @@ export const Route = createFileRoute("/_app/opportunities/")({
   },
   component: Opps,
 });
+
+/** The one idea this whole section is about — picked in the dashboard / setup. */
+function useFocusOpportunity() {
+  const { user } = useAuth();
+  const opportunity = resolveFocusOpportunity({
+    focusOpportunityId: user?.focusOpportunityId,
+    industry: user?.industry,
+  });
+  const ownIdea = (user?.mode ?? "own-idea") === "own-idea";
+  const displayName = ownIdea && user?.idea ? user.idea : opportunity.name;
+  return { opportunity, displayName, ownIdea };
+}
 
 function OpportunityCard({
   o,
@@ -93,33 +108,70 @@ function OpportunityCard({
   );
 }
 
+/** Overview = the focused idea up top, then the rest for comparison. */
 function Overview() {
+  const { opportunity: focus, displayName, ownIdea } = useFocusOpportunity();
+  const { isSaved, toggle } = useSavedOpportunities();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("all");
-  const { isSaved, toggle } = useSavedOpportunities();
-  const cats = ["all", ...Array.from(new Set(OPPORTUNITIES.map((o) => o.category)))];
-  const list = OPPORTUNITIES.filter(
-    (o) => (cat === "all" || o.category === cat) && o.name.toLowerCase().includes(q.toLowerCase()),
-  ).sort((a, b) => b.score - a.score);
+  const others = OPPORTUNITIES.filter((o) => o.id !== focus.id);
+  const cats = ["all", ...Array.from(new Set(others.map((o) => o.category)))];
+  const list = others
+    .filter((o) => (cat === "all" || o.category === cat) && o.name.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => b.score - a.score);
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Search opportunities…" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
+    <div className="space-y-6">
+      <Card className="border-[color:var(--color-brand)]/20 bg-gradient-to-br from-[color:var(--color-brand)]/5 to-transparent">
+        <CardContent className="flex flex-col gap-5 p-6 sm:flex-row sm:items-start">
+          <ScoreRing score={focus.score} size={96} label={ownIdea ? "Idea score" : "Match"} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="bg-[color:var(--color-brand)]/15 text-[color:var(--color-brand)] hover:bg-[color:var(--color-brand)]/15 text-[10px] font-semibold uppercase tracking-widest">
+                In focus
+              </Badge>
+              <Badge variant="secondary" className="text-[10px]">{focus.category}</Badge>
+            </div>
+            <h2 className="mt-1 text-xl font-bold">{displayName}</h2>
+            <p className="mt-2 text-sm text-muted-foreground">{focus.rationale}</p>
+            <div className="mt-4 grid max-w-md grid-cols-3 gap-2 text-center text-xs">
+              <div className="rounded-md bg-secondary/50 p-2"><p className="text-muted-foreground">Demand</p><p className="font-semibold text-foreground">{focus.demand}</p></div>
+              <div className="rounded-md bg-secondary/50 p-2"><p className="text-muted-foreground">Competition</p><p className="font-semibold text-foreground">{focus.competition}</p></div>
+              <div className="rounded-md bg-secondary/50 p-2"><p className="text-muted-foreground">Break-even</p><p className="font-semibold text-foreground">{focus.breakEvenMonths}mo</p></div>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              The Market, Competitors, Location and Insights tabs all analyze this idea.
+            </p>
+            <div className="mt-4">
+              <Link to="/opportunities/$id" params={{ id: focus.id }}>
+                <Button className="bg-[color:var(--color-brand)] text-[color:var(--color-brand-foreground)] hover:bg-[color:var(--color-brand)]/90">
+                  View full analysis <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
           </div>
-          <Select value={cat} onValueChange={setCat}>
-            <SelectTrigger className="sm:w-56"><Filter className="mr-2 h-4 w-4" /><SelectValue /></SelectTrigger>
-            <SelectContent>{cats.map((c) => <SelectItem key={c} value={c}>{c === "all" ? "All categories" : c}</SelectItem>)}</SelectContent>
-          </Select>
         </CardContent>
       </Card>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {list.map((o) => (
-          <OpportunityCard key={o.id} o={o} saved={isSaved(o.id)} onToggleSave={() => toggle(o.id)} />
-        ))}
+
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Compare other ideas</p>
+        <Card className="mb-4">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input placeholder="Search opportunities…" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            <Select value={cat} onValueChange={setCat}>
+              <SelectTrigger className="sm:w-56"><Filter className="mr-2 h-4 w-4" /><SelectValue /></SelectTrigger>
+              <SelectContent>{cats.map((c) => <SelectItem key={c} value={c}>{c === "all" ? "All categories" : c}</SelectItem>)}</SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {list.map((o) => (
+            <OpportunityCard key={o.id} o={o} saved={isSaved(o.id)} onToggleSave={() => toggle(o.id)} />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -166,14 +218,74 @@ function SavedTab() {
 function Opps() {
   const { tab } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const goTo = useNavigate();
   const active = tab ?? "overview";
   const { ids } = useSavedOpportunities();
+  const { user } = useAuth();
+  const { projects, add: addProject } = useProjects();
+  const { opportunity: focus, displayName, ownIdea } = useFocusOpportunity();
+
+  const projectLocation =
+    [user?.city, user?.state, user?.country].filter(Boolean).join(", ") ||
+    user?.siteLabel ||
+    "Location not set";
+  const projectTitle = `${ownIdea && user?.idea ? user.idea : displayName} — ${
+    user?.city ?? projectLocation
+  }`;
+
+  const downloadFullReport = () => {
+    downloadReport(
+      adHocReport({
+        opportunity: focus,
+        title: `${ownIdea && user?.idea ? user.idea : displayName} — full report`,
+        location: projectLocation,
+        businessType: focus.category,
+      }),
+    );
+    toast.success("Downloading full report — market, competitors, location & insights");
+  };
+
+  const saveProject = () => {
+    // don't stack an identical analysis; genuinely different ones accumulate
+    const dup = projects.find(
+      (p) => p.focusOpportunityId === focus.id && p.location === projectLocation,
+    );
+    if (dup) {
+      toast.info("This analysis is already in Projects & Reports");
+    } else {
+      addProject({
+        title: projectTitle,
+        location: projectLocation,
+        businessType: ownIdea && user?.idea ? user.idea : focus.name,
+        category: focus.category,
+        focusOpportunityId: focus.id,
+        lat: user?.siteLat ?? user?.geoLat,
+        lng: user?.siteLng ?? user?.geoLng,
+        score: focus.score,
+      });
+      toast.success("Saved to Projects & Reports");
+    }
+    goTo({ to: "/projects" });
+  };
 
   return (
     <div>
       <PageHeader
         title="Opportunities"
-        description="Ranked opportunities plus the market, competitor, location and insight signals behind them."
+        description={`Market, competitor, location and insight signals for "${displayName}".`}
+        actions={
+          <>
+            <Button variant="outline" onClick={downloadFullReport}>
+              <Download className="mr-1 h-4 w-4" /> Download full report
+            </Button>
+            <Button
+              onClick={saveProject}
+              className="bg-[color:var(--color-brand)] text-[color:var(--color-brand-foreground)] hover:bg-[color:var(--color-brand)]/90"
+            >
+              <Save className="mr-1 h-4 w-4" /> Save
+            </Button>
+          </>
+        }
       />
       <div className="space-y-6 p-4 sm:p-8">
         <Tabs
@@ -190,10 +302,10 @@ function Opps() {
           </TabsList>
           <TabsContent value="overview" className="mt-6"><Overview /></TabsContent>
           <TabsContent value="saved" className="mt-6"><SavedTab /></TabsContent>
-          <TabsContent value="market" className="mt-6"><MarketPanel /></TabsContent>
-          <TabsContent value="competitors" className="mt-6"><CompetitorsPanel /></TabsContent>
-          <TabsContent value="location" className="mt-6"><LocationPanel /></TabsContent>
-          <TabsContent value="insights" className="mt-6"><InsightsPanel /></TabsContent>
+          <TabsContent value="market" className="mt-6"><MarketPanel opportunity={focus} /></TabsContent>
+          <TabsContent value="competitors" className="mt-6"><CompetitorsPanel opportunity={focus} /></TabsContent>
+          <TabsContent value="location" className="mt-6"><LocationPanel opportunity={focus} /></TabsContent>
+          <TabsContent value="insights" className="mt-6"><InsightsPanel opportunity={focus} /></TabsContent>
         </Tabs>
       </div>
     </div>
