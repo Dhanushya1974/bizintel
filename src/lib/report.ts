@@ -6,6 +6,7 @@ import {
   type Opportunity,
 } from "@/lib/mock-data";
 import { getProject } from "@/lib/projects";
+import { fetchNearby } from "@/lib/geo";
 import {
   competitorsFor,
   demandTimeseries,
@@ -41,14 +42,40 @@ type ReportBase = {
   businessType: string;
   status: string;
   opportunity: Opportunity;
+  lat?: number;
+  lng?: number;
 };
+
+/** Real nearby businesses from OpenStreetMap when we have coordinates; the modeled
+ *  estimate otherwise (no site pinned, or the lookup failed/found nothing). */
+async function competitorsForReport(o: Opportunity, lat?: number, lng?: number): Promise<Competitor[]> {
+  if (typeof lat === "number" && typeof lng === "number") {
+    try {
+      const live = await fetchNearby({ lat, lng, category: o.category, name: o.name });
+      if (live.competitors.length) {
+        return live.competitors.map((c) => ({
+          id: c.id,
+          name: c.name,
+          category: c.kind,
+          distanceMi: c.distanceMi,
+          lat: c.lat,
+          lng: c.lng,
+          info: c.info,
+        }));
+      }
+    } catch {
+      /* backend unreachable — fall back to the estimate below */
+    }
+  }
+  return competitorsFor(o);
+}
 
 /**
  * Assemble the full consolidated report from a single focused opportunity, using
  * the exact same derivations the Market / Competitors / Location / Insights tabs
  * render — so the downloaded report always matches what's on screen.
  */
-function assemble(base: ReportBase): ProjectReport {
+async function assemble(base: ReportBase): Promise<ProjectReport> {
   const o = base.opportunity;
   const site = siteScore(o);
   return {
@@ -64,7 +91,7 @@ function assemble(base: ReportBase): ProjectReport {
     generatedAt: new Date().toISOString().slice(0, 10),
     demographics: demographics(o),
     demand: demandTimeseries(o),
-    competitors: competitorsFor(o),
+    competitors: await competitorsForReport(o, base.lat, base.lng),
     siteScore: site.rows.map((r) => ({ label: r.l, value: r.v })),
     forecast: REVENUE_FORECAST,
     insights: insightsFor(o).map((i) => ({ tag: i.tag, title: i.title, body: i.body })),
@@ -79,7 +106,7 @@ function matchOpportunity(score: number): Opportunity {
 }
 
 /** Resolve `/projects/$id` — a real saved project first, then the demo set. */
-export function getProjectReport(id: string): ProjectReport | null {
+export async function getProjectReport(id: string): Promise<ProjectReport | null> {
   const real = getProject(id);
   if (real) {
     return assemble({
@@ -92,6 +119,8 @@ export function getProjectReport(id: string): ProjectReport | null {
         focusOpportunityId: real.focusOpportunityId,
         industry: real.category,
       }),
+      lat: real.lat,
+      lng: real.lng,
     });
   }
   const demo = SAVED_PROJECTS.find((p) => p.id === id);
@@ -107,12 +136,14 @@ export function getProjectReport(id: string): ProjectReport | null {
 }
 
 /** Build a consolidated report on the fly (no saved project needed). */
-export function adHocReport(input: {
+export async function adHocReport(input: {
   opportunity: Opportunity;
   title: string;
   location: string;
   businessType: string;
-}): ProjectReport {
+  lat?: number;
+  lng?: number;
+}): Promise<ProjectReport> {
   return assemble({
     id: "adhoc",
     title: input.title,
@@ -120,6 +151,8 @@ export function adHocReport(input: {
     businessType: input.businessType,
     status: "Complete",
     opportunity: input.opportunity,
+    lat: input.lat,
+    lng: input.lng,
   });
 }
 
@@ -184,8 +217,15 @@ export function buildReportHtml(r: ProjectReport): string {
 
   <h2>Competitor analysis</h2>
   <table>
-    <thead><tr><th>Name</th><th>Category</th><th>Distance (mi)</th><th>Rating</th><th>Reviews</th><th>Price</th></tr></thead>
-    <tbody>${rows(r.competitors.map((c) => [c.name, c.category, c.distanceMi, c.rating, c.reviews, "$".repeat(c.priceLevel)]))}</tbody>
+    <thead><tr><th>Name</th><th>Category</th><th>Distance (mi)</th><th>Detail</th></tr></thead>
+    <tbody>${rows(
+      r.competitors.map((c) => [
+        c.name,
+        c.category,
+        c.distanceMi,
+        c.rating != null ? `${c.rating} ★ (${c.reviews} reviews)` : c.info || "—",
+      ]),
+    )}</tbody>
   </table>
 
   <h2>Location intelligence</h2>

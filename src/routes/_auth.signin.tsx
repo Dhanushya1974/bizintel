@@ -1,12 +1,26 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 import { useAuth } from "@/lib/auth";
+import { requestLoginCode, verifyLoginCode } from "@/lib/api";
 
 export const Route = createFileRoute("/_auth/signin")({
   head: () => ({ meta: [{ title: "Sign in — BizIntel" }] }),
@@ -20,6 +34,25 @@ function SignIn() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [showVerify, setShowVerify] = useState(false);
+  const [code, setCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
+
+  const sendCode = async () => {
+    await requestLoginCode(email);
+    setCode("");
+    setShowVerify(true);
+    setCooldown(30);
+    toast.success(`Verification code sent to ${email}`);
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
@@ -27,10 +60,42 @@ function SignIn() {
       return;
     }
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    signIn(email);
-    toast.success("Welcome back");
-    navigate({ to: "/setup" });
+    try {
+      await sendCode();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not send verification code");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resend = async () => {
+    if (cooldown > 0) return;
+    try {
+      await sendCode();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not resend code");
+    }
+  };
+
+  const verify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (code.length !== 6) {
+      toast.error("Enter the 6-digit code");
+      return;
+    }
+    setVerifying(true);
+    try {
+      await verifyLoginCode(email, code);
+      signIn(email);
+      setShowVerify(false);
+      toast.success("Welcome back");
+      navigate({ to: "/setup" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Invalid code");
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const quickDemo = () => {
@@ -77,7 +142,7 @@ function SignIn() {
           <Checkbox defaultChecked /> Keep me signed in
         </label>
         <Button type="submit" disabled={loading} className="w-full bg-[color:var(--color-brand)] text-[color:var(--color-brand-foreground)] hover:bg-[color:var(--color-brand)]/90">
-          {loading ? "Signing in…" : "Sign in"}
+          {loading ? "Sending code…" : "Sign in"}
         </Button>
         <button type="button" onClick={quickDemo} className="w-full text-center text-xs text-muted-foreground hover:text-foreground">
           Or explore with the demo account →
@@ -90,6 +155,45 @@ function SignIn() {
           Create an account
         </Link>
       </p>
+
+      <Dialog open={showVerify} onOpenChange={setShowVerify}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Check your email</DialogTitle>
+            <DialogDescription>
+              We sent a 6-digit code to <span className="font-medium text-foreground">{email}</span>. Enter it below to finish signing in.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={verify} className="space-y-4">
+            <div className="flex justify-center py-2">
+              <InputOTP maxLength={6} value={code} onChange={setCode} autoFocus>
+                <InputOTPGroup>
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <InputOTPSlot key={i} index={i} />
+                  ))}
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
+            <DialogFooter className="flex-col gap-2 sm:flex-col">
+              <Button
+                type="submit"
+                disabled={verifying || code.length !== 6}
+                className="w-full bg-[color:var(--color-brand)] text-[color:var(--color-brand-foreground)] hover:bg-[color:var(--color-brand)]/90"
+              >
+                {verifying ? "Verifying…" : "Verify & sign in"}
+              </Button>
+              <button
+                type="button"
+                onClick={resend}
+                disabled={cooldown > 0}
+                className="w-full text-center text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
+              </button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

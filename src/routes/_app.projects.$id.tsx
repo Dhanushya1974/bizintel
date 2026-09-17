@@ -1,12 +1,13 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { ArrowLeft, Download, Printer, Star, MapPin } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Download, Loader2, Printer, Star, MapPin } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ScoreRing } from "@/components/brand/score-ring";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getProjectReport, downloadReport } from "@/lib/report";
+import { getProjectReport, downloadReport, type ProjectReport } from "@/lib/report";
 
 export const Route = createFileRoute("/_app/projects/$id")({
   head: () => ({ meta: [{ title: "Project report — BizIntel" }] }),
@@ -18,7 +19,24 @@ const money = (n: number) => `$${n.toLocaleString()}`;
 
 function Report() {
   const { id } = Route.useParams();
-  const report = getProjectReport(id);
+  const [report, setReport] = useState<ProjectReport | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReport(undefined);
+    getProjectReport(id).then((r) => !cancelled && setReport(r));
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  if (report === undefined) {
+    return (
+      <div className="flex items-center justify-center gap-2 p-16 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Building report…
+      </div>
+    );
+  }
   if (!report) throw notFound();
   const { project: p, opportunity: o } = report;
 
@@ -114,8 +132,7 @@ function Report() {
                     <TableHead>Name</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Distance</TableHead>
-                    <TableHead>Rating</TableHead>
-                    <TableHead>Price</TableHead>
+                    <TableHead>Detail</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -124,8 +141,16 @@ function Report() {
                       <TableCell className="font-medium">{c.name}</TableCell>
                       <TableCell><Badge variant="secondary">{c.category}</Badge></TableCell>
                       <TableCell>{c.distanceMi} mi</TableCell>
-                      <TableCell><Star className="mr-1 inline h-3 w-3 fill-[color:var(--color-brand)] text-[color:var(--color-brand)]" />{c.rating} <span className="text-xs text-muted-foreground">({c.reviews})</span></TableCell>
-                      <TableCell>{"$".repeat(c.priceLevel)}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {c.rating != null ? (
+                          <>
+                            <Star className="mr-1 inline h-3 w-3 fill-[color:var(--color-brand)] text-[color:var(--color-brand)]" />
+                            {c.rating} <span className="text-xs">({c.reviews})</span>
+                          </>
+                        ) : (
+                          c.info || "—"
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

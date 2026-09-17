@@ -23,8 +23,8 @@ const NewAnalysisButton = () => (
 );
 
 /** One consolidated report file — every Opportunities tab (market, competitors, location, insights). */
-function downloadFull(id: string, title: string) {
-  const report = getProjectReport(id);
+async function downloadFull(id: string, title: string) {
+  const report = await getProjectReport(id);
   if (!report) return toast.error("Could not build that report");
   downloadReport(report);
   toast.success(`Downloading “${title}” — full report`);

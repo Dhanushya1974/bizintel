@@ -233,15 +233,16 @@ function Opps() {
     user?.city ?? projectLocation
   }`;
 
-  const downloadFullReport = () => {
-    downloadReport(
-      adHocReport({
-        opportunity: focus,
-        title: `${ownIdea && user?.idea ? user.idea : displayName} — full report`,
-        location: projectLocation,
-        businessType: focus.category,
-      }),
-    );
+  const downloadFullReport = async () => {
+    const report = await adHocReport({
+      opportunity: focus,
+      title: `${ownIdea && user?.idea ? user.idea : displayName} — full report`,
+      location: projectLocation,
+      businessType: focus.category,
+      lat: user?.siteLat ?? user?.geoLat,
+      lng: user?.siteLng ?? user?.geoLng,
+    });
+    downloadReport(report);
     toast.success("Downloading full report — market, competitors, location & insights");
   };
 

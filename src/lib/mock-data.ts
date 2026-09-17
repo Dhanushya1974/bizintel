@@ -19,11 +19,14 @@ export type Competitor = {
   name: string;
   category: string;
   distanceMi: number;
-  rating: number;
-  reviews: number;
-  priceLevel: 1 | 2 | 3 | 4;
   lat: number;
   lng: number;
+  // Only known for the modeled estimate — real (live) competitors from OpenStreetMap
+  // don't carry ratings/reviews/price, so these are omitted for those rows.
+  rating?: number;
+  reviews?: number;
+  priceLevel?: 1 | 2 | 3 | 4;
+  info?: string;
 };
 
 export type SavedProject = {

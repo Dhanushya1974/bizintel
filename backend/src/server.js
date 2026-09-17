@@ -4,6 +4,7 @@ import cors from "cors";
 import { pool, waitForDb } from "./db.js";
 import { chat } from "./consultant.js";
 import { resolveMapsLink, geocode, nearby, siteScore } from "./geo.js";
+import { requestLoginCode, verifyLoginCode } from "./auth.js";
 
 const PORT = Number(process.env.PORT || 4000);
 const CORS_ORIGIN =
@@ -54,6 +55,33 @@ app.post("/api/leads", async (req, res) => {
     res.status(201).json({ id: result.insertId });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// --- auth: email verification codes --------------------------------------
+app.post("/api/auth/request-code", async (req, res) => {
+  const { email } = req.body ?? {};
+  if (!email || typeof email !== "string") {
+    return res.status(400).json({ message: "email is required" });
+  }
+  try {
+    await requestLoginCode(email.trim().toLowerCase());
+    res.json({ sent: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+});
+
+app.post("/api/auth/verify-code", async (req, res) => {
+  const { email, code } = req.body ?? {};
+  if (!email || !code) {
+    return res.status(400).json({ message: "email and code are required" });
+  }
+  try {
+    verifyLoginCode(email.trim().toLowerCase(), String(code).trim());
+    res.json({ verified: true });
+  } catch (err) {
+    res.status(err.status || 400).json({ message: err.message });
   }
 });
 

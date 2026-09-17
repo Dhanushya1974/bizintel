@@ -277,12 +277,15 @@ export async function geocode(place) {
 // --- nearby competitors: OSM Overpass -----------------------------------
 
 // Public Overpass instances are frequently overloaded (429/504) — try mirrors in turn.
+// Ordered by measured reliability from this deployment's network — the two that
+// consistently time out (rather than fail fast) go last so a bad mirror doesn't
+// eat the whole time budget before a working one gets a turn.
 const OVERPASS_ENDPOINTS = [
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter",
   "https://overpass.osm.ch/api/interpreter",
   "https://overpass.openstreetmap.fr/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
 ];
 const throttledOverpass = makeThrottle(1100);
 
@@ -302,11 +305,34 @@ const NEARBY_SELECTORS = {
     `["shop"~"^(pet|pet_grooming)$"]`,
     `["amenity"~"^(veterinary|animal_boarding)$"]`,
   ],
+  retail: [
+    `["shop"~"^(clothes|shoes|department_store|mall|supermarket|convenience|electronics|furniture|jewelry|gift|variety_store)$"]`,
+  ],
+  tech: [
+    `["shop"~"^(computer|electronics|mobile_phone)$"]`,
+    `["office"~"^(it|telecommunication|coworking)$"]`,
+  ],
+  education: [
+    `["amenity"~"^(school|college|university|language_school|driving_school)$"]`,
+    `["shop"="books"]`,
+  ],
+  hospitality: [
+    `["tourism"~"^(hotel|guest_house|hostel|motel)$"]`,
+    `["amenity"="hotel"]`,
+  ],
+  // No specific business-type signal — count general commercial activity nearby
+  // instead of guessing a category (previously silently defaulted to "restaurant").
+  generic: [`["shop"]`, `["office"]`],
 };
 const CATEGORY_KEYWORD = {
   "Food & Beverage": "restaurant",
   "Health & Wellness": "fitness",
   "Consumer Services": "pet",
+  Retail: "retail",
+  Technology: "tech",
+  Education: "education",
+  Hospitality: "hospitality",
+  Other: "generic",
 };
 
 // Wider nets, used when the specific query finds nothing (sparse OSM coverage).
@@ -321,6 +347,11 @@ const BROAD_SELECTORS = {
     `["sport"]`,
   ],
   pet: [`["shop"~"pet"]`, `["amenity"~"^(veterinary|animal_boarding|animal_shelter)$"]`],
+  retail: [`["shop"]`],
+  tech: [`["shop"~"^(computer|electronics|mobile_phone|hardware)$"]`, `["office"]`],
+  education: [`["amenity"~"^(school|college|university|kindergarten|language_school)$"]`],
+  hospitality: [`["tourism"]`, `["amenity"~"^(hotel|restaurant)$"]`],
+  generic: [`["shop"]`, `["office"]`, `["amenity"~"^(restaurant|cafe)$"]`],
 };
 const KEYWORD_FAMILY = {
   coffee: "food",
@@ -330,6 +361,11 @@ const KEYWORD_FAMILY = {
   restaurant: "food",
   fitness: "fitness",
   pet: "pet",
+  retail: "retail",
+  tech: "tech",
+  education: "education",
+  hospitality: "hospitality",
+  generic: "generic",
 };
 
 function keywordFor(name = "", category = "") {
@@ -340,8 +376,56 @@ function keywordFor(name = "", category = "") {
   if (/\b(bar|pub|brew|tap)\b/.test(n)) return "bar";
   if (/pilates|yoga|fitness|gym|wellness|studio/.test(n)) return "fitness";
   if (/\bpet|dog|grooming|\bvet\b|daycare/.test(n)) return "pet";
-  if (/poke|bowl|salad|restaurant|kitchen|eatery|diner|food/.test(n)) return "restaurant";
-  return CATEGORY_KEYWORD[category] || "restaurant";
+  if (/poke|bowl|salad|restaurant|kitchen|eatery|diner|\bfood\b/.test(n)) return "restaurant";
+  if (/\b(hotel|resort|lodge|homestay|hostel|stay)\b/.test(n)) return "hospitality";
+  if (/\b(school|academy|tutor|coaching|institute|classes|training)\b/.test(n)) return "education";
+  if (/\b(software|\bit\b|computer|electronics|repair|mobile|gadget)\b/.test(n)) return "tech";
+  if (/\b(shop|store|boutique|retail|mart|showroom)\b/.test(n)) return "retail";
+  return CATEGORY_KEYWORD[category] || "generic";
+}
+
+// --- Geoapify Places: preferred over the free Overpass mirrors when configured,
+// since it's authenticated and reliable instead of best-effort community infra.
+// Built on the same OSM dataset, so we normalize its output into the exact same
+// { type, id, lat, lon, tags } shape parsePlaces() already knows how to read.
+const GEOAPIFY_CATEGORIES = {
+  food: "catering,commercial.food_and_drink",
+  fitness: "sport,leisure.fitness_centre",
+  pet: "pet,service.veterinary",
+  retail: "commercial",
+  tech: "commercial.electronics,office.it,office.coworking",
+  education: "education",
+  hospitality: "accommodation",
+  generic: "commercial,office,catering",
+};
+
+async function geoapifyNearby(lat, lng, radius, keyword) {
+  const apiKey = process.env.GEOAPIFY_API_KEY;
+  if (!apiKey) return null;
+  const categories = GEOAPIFY_CATEGORIES[KEYWORD_FAMILY[keyword] || "food"];
+  const url = new URL("https://api.geoapify.com/v2/places");
+  url.searchParams.set("categories", categories);
+  url.searchParams.set("filter", `circle:${lng},${lat},${radius}`);
+  url.searchParams.set("bias", `proximity:${lng},${lat}`);
+  url.searchParams.set("limit", "40");
+  url.searchParams.set("apiKey", apiKey);
+  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  if (!res.ok) {
+    console.warn(`[geoapify] HTTP ${res.status}`);
+    throw err(`geoapify returned ${res.status}`, 502);
+  }
+  const data = await res.json();
+  return (data.features || []).map((f, i) => {
+    const p = f.properties || {};
+    const raw = p.datasource?.raw || {};
+    return {
+      type: "node",
+      id: p.place_id || p.osm_id || `geoapify-${i}`,
+      lat: f.geometry?.coordinates?.[1],
+      lon: f.geometry?.coordinates?.[0],
+      tags: { name: p.name, ...raw },
+    };
+  });
 }
 
 function tidyInfo(s) {
@@ -370,22 +454,28 @@ function buildOverpassQuery(lat, lng, radius, selectors) {
   return `[out:json][timeout:25];(${clauses});out center 80;`;
 }
 
-async function runOverpass(query) {
+async function runOverpass(query, budgetMs = 22_000) {
   let lastStatus = 0;
-  const deadline = Date.now() + 22_000; // whole call budget — fail fast, let the UI use estimates
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    if (Date.now() > deadline) break;
+  const deadline = Date.now() + budgetMs; // whole call budget — fail fast, let the UI use estimates
+  // Cycle through the mirror list (not just one pass) until the budget runs out — these
+  // free public mirrors rate-limit in bursts, and a mirror that's 429ing now is often
+  // fine a few seconds later, so a second lap can succeed where a single pass wouldn't.
+  for (let i = 0; Date.now() < deadline; i++) {
+    const endpoint = OVERPASS_ENDPOINTS[i % OVERPASS_ENDPOINTS.length];
+    const remaining = deadline - Date.now();
     try {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": GEO_UA },
         body: "data=" + encodeURIComponent(query),
-        signal: AbortSignal.timeout(8_000),
+        signal: AbortSignal.timeout(Math.min(6_000, remaining)),
       });
       if (res.ok) return res.json();
       lastStatus = res.status;
-    } catch {
+      console.warn(`[overpass] ${endpoint} -> HTTP ${res.status}`);
+    } catch (e) {
       lastStatus = lastStatus || 599;
+      console.warn(`[overpass] ${endpoint} -> ${e.name}: ${e.message}`);
     }
   }
   throw err(`places lookup unavailable (upstream ${lastStatus})`, 502);
@@ -445,36 +535,59 @@ export async function nearby(params) {
     return { ...dbHit, source: "cache" };
   }
 
-  let competitors = parsePlaces(
-    (await throttledOverpass(() => runOverpass(buildOverpassQuery(lat, lng, radius, selectors))))
-      .elements,
-    lat,
-    lng,
-    keyword,
-  );
+  let competitors = [];
   let effRadius = radius;
   let broadened = false;
+  let source = "overpass";
 
-  // Sparse OSM area — widen the radius and the category net, once.
-  if (competitors.length === 0) {
-    effRadius = Math.min(5000, radius * 2.5);
-    const broad = BROAD_SELECTORS[KEYWORD_FAMILY[keyword] || "food"];
+  // Authenticated Geoapify first when a key is configured — reliable, no shared
+  // free-mirror rate limits. Only fall back to Overpass if it's unset or fails.
+  try {
+    const geoEls = await geoapifyNearby(lat, lng, radius, keyword);
+    if (geoEls) {
+      competitors = parsePlaces(geoEls, lat, lng, keyword);
+      source = "geoapify";
+    }
+  } catch (e) {
+    console.warn(`[geoapify] falling back to Overpass: ${e.message}`);
+  }
+
+  if (competitors.length === 0 && source !== "geoapify") {
     competitors = parsePlaces(
-      (await throttledOverpass(() =>
-        runOverpass(buildOverpassQuery(lat, lng, effRadius, broad)),
-      )).elements,
+      (
+        await throttledOverpass(() =>
+          runOverpass(buildOverpassQuery(lat, lng, radius, selectors), 26_000),
+        )
+      ).elements,
       lat,
       lng,
       keyword,
     );
-    broadened = competitors.length > 0;
+
+    // Sparse OSM area — widen the radius and the category net, once. Shorter budget:
+    // this is a bonus best-effort retry, not worth doubling the client's whole wait.
+    if (competitors.length === 0) {
+      effRadius = Math.min(5000, radius * 2.5);
+      const broad = BROAD_SELECTORS[KEYWORD_FAMILY[keyword] || "food"];
+      competitors = parsePlaces(
+        (
+          await throttledOverpass(() =>
+            runOverpass(buildOverpassQuery(lat, lng, effRadius, broad), 10_000),
+          )
+        ).elements,
+        lat,
+        lng,
+        keyword,
+      );
+      broadened = competitors.length > 0;
+    }
   }
 
   const value = { competitors, count: competitors.length, radius: effRadius, keyword, broadened };
   cache.set(key, { value, exp: Date.now() + (competitors.length ? TTL_MS : 60 * 60 * 1000) });
-  // Don't persist an empty result — OSM data or the area may fill in later.
+  // Don't persist an empty result — the source area may fill in later.
   if (competitors.length) putCachedNearby(key, value).catch(() => {});
-  return { ...value, source: "overpass" };
+  return { ...value, source };
 }
 
 // --- site score: combine live signals into a location rating -------------
@@ -483,7 +596,7 @@ export async function nearby(params) {
  * Several `out count` results in a single Overpass request.
  * groups: { name: { radius, selectors } }  ->  { name: number | null }
  */
-async function overpassCounts(lat, lng, groups) {
+async function overpassCounts(lat, lng, groups, budgetMs = 22_000) {
   const names = Object.keys(groups);
   const setDefs = names
     .map((n) => {
@@ -496,7 +609,7 @@ async function overpassCounts(lat, lng, groups) {
     .join("");
   const outs = names.map((n) => `.${n} out count;`).join("");
   const data = await throttledOverpass(() =>
-    runOverpass(`[out:json][timeout:25];${setDefs}${outs}`),
+    runOverpass(`[out:json][timeout:25];${setDefs}${outs}`, budgetMs),
   );
   const counts = (data.elements || []).filter((e) => e.type === "count");
   const out = {};
@@ -518,6 +631,7 @@ async function nearestPlacePopulation(lat, lng) {
     const data = await throttledOverpass(() =>
       runOverpass(
         `[out:json][timeout:25];node["place"~"^(city|town|municipality|suburb|village)$"]["population"](around:40000,${lat},${lng});out tags 60;`,
+        10_000,
       ),
     );
     let best = null;
@@ -590,36 +704,44 @@ export async function siteScore(params) {
   let population = null;
   let place = null;
 
-  try {
-    // one Overpass request, four counts
-    const c = await overpassCounts(lat, lng, {
-      comp: { radius: 2000, selectors: NEARBY_SELECTORS[keyword] || NEARBY_SELECTORS.restaurant },
-      transit: {
-        radius: 800,
-        selectors: [
-          `["highway"="bus_stop"]`,
-          `["public_transport"="platform"]`,
-          `["railway"~"station|halt|tram_stop"]`,
-        ],
+  // Run the Overpass counts, the population lookup, and (when configured) an
+  // authenticated Geoapify competitor count concurrently — different upstreams,
+  // so this roughly halves wall-clock time instead of paying every budget in turn.
+  const [countsResult, popResult, geoCompResult] = await Promise.allSettled([
+    overpassCounts(
+      lat,
+      lng,
+      {
+        comp: { radius: 2000, selectors: NEARBY_SELECTORS[keyword] || NEARBY_SELECTORS.restaurant },
+        transit: {
+          radius: 800,
+          selectors: [
+            `["highway"="bus_stop"]`,
+            `["public_transport"="platform"]`,
+            `["railway"~"station|halt|tram_stop"]`,
+          ],
+        },
+        commerce: { radius: 1000, selectors: [`["office"]`, `["shop"]`] },
+        education: { radius: 1500, selectors: [`["amenity"~"^(school|college|university)$"]`] },
       },
-      commerce: { radius: 1000, selectors: [`["office"]`, `["shop"]`] },
-      education: { radius: 1500, selectors: [`["amenity"~"^(school|college|university)$"]`] },
-    });
-    competitorCount = c.comp;
-    transitStops = c.transit;
-    commerce = c.commerce;
-    education = c.education;
-  } catch {
-    /* keep nulls — each sub-score falls back to the model figure */
+      12_000,
+    ),
+    throttled(() => placePopulation(lat, lng)),
+    geoapifyNearby(lat, lng, 2000, keyword),
+  ]);
+  if (countsResult.status === "fulfilled") {
+    competitorCount = countsResult.value.comp;
+    transitStops = countsResult.value.transit;
+    commerce = countsResult.value.commerce;
+    education = countsResult.value.education;
   }
-  try {
-    const p = await throttled(() => placePopulation(lat, lng));
-    if (p) {
-      population = p.pop;
-      place = p.name;
-    }
-  } catch {
-    /* keep null */
+  if (popResult.status === "fulfilled" && popResult.value) {
+    population = popResult.value.pop;
+    place = popResult.value.name;
+  }
+  // Geoapify (authenticated, reliable) beats the free Overpass count when available.
+  if (geoCompResult.status === "fulfilled" && geoCompResult.value) {
+    competitorCount = geoCompResult.value.length;
   }
 
   // Diminishing-returns curves: each extra competitor / stop matters a bit less.
@@ -644,9 +766,11 @@ export async function siteScore(params) {
     { l: "Demand match", v: demandMatch },
     { l: "Accessibility", v: accessibility },
   ];
-  // Consider it "live" only when the Overpass counts came back; a Nominatim-only
-  // hit still leaves 3 of 4 sub-scores on the model, so don't lock it in.
-  const gotCounts = competitorCount != null && transitStops != null;
+  // Consider it "live" when we have a real competitor count (Geoapify or Overpass)
+  // plus at least one other live signal — a Nominatim-only hit isn't enough to
+  // call the whole score live.
+  const gotCounts =
+    competitorCount != null && (transitStops != null || geoCompResult.status === "fulfilled");
   const value = {
     overall: Math.round(rows.reduce((s, r) => s + r.v, 0) / rows.length),
     rows,

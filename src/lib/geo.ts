@@ -76,7 +76,9 @@ export async function fetchNearby(p: {
   if (p.category) q.set("category", p.category);
   if (p.name) q.set("name", p.name);
   if (p.radius) q.set("radius", String(p.radius));
-  return getJson<NearbyResult>(`${api}/api/nearby?${q.toString()}`, 18_000);
+  // Backend worst case: a full 26s Overpass pass, plus (if that comes up empty) a
+  // shorter 10s broadened retry — give it real margin instead of racing it.
+  return getJson<NearbyResult>(`${api}/api/nearby?${q.toString()}`, 40_000);
 }
 
 export type SiteScoreResult = {
@@ -120,7 +122,10 @@ export async function fetchSiteScore(p: {
   if (p.name) q.set("name", p.name);
   if (p.demand != null) q.set("demand", String(p.demand));
   if (p.competition != null) q.set("competition", String(p.competition));
-  return getJson<SiteScoreResult>(`${api}/api/site-score?${q.toString()}`, 22_000);
+  // Overpass counts and the population lookup now run concurrently on the backend,
+  // but the population lookup can itself fall back to a slower Overpass query
+  // (up to ~20s) — give it real margin rather than cutting it off early.
+  return getJson<SiteScoreResult>(`${api}/api/site-score?${q.toString()}`, 26_000);
 }
 
 /** Geocode a city/pincode via the backend (OSM Nominatim + India pincode service). */
