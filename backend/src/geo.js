@@ -165,8 +165,22 @@ async function lookupIndiaPincode(pincode) {
       const res = await fetch(`${POSTAL_IN}/${pincode}`, { signal: AbortSignal.timeout(8000) });
       const json = await res.json();
       const rec = Array.isArray(json) ? json[0] : null;
-      const po = rec?.Status === "Success" ? rec.PostOffice?.[0] : null;
-      if (po) return { city: po.District || po.Block || po.Name, state: po.State, country: po.Country || "India" };
+      const offices = rec?.Status === "Success" ? rec.PostOffice ?? [] : [];
+      // A pincode covers many branch/sub offices (often villages) — prefer the Head
+      // Post Office entry, since its Name/Block line up with the actual town.
+      const po = offices.find((o) => o.BranchType === "Head Post Office") ?? offices[0];
+      if (po) {
+        // District is a big administrative area, not the town — e.g. pincode 517325's
+        // District is "Chittoor" even though the actual town is Madanapalle. Block
+        // (the taluk/mandal, usually named after its headquarters town) is what
+        // actually identifies the place a pincode belongs to; District is a last resort.
+        return {
+          city: po.Block || po.Name || po.District,
+          district: po.District,
+          state: po.State,
+          country: po.Country || "India",
+        };
+      }
     } catch {
       /* retry */
     }
@@ -235,17 +249,25 @@ export async function geocode(place) {
   const looksIndian = /^\d{6}$/.test(pincode) && (!country || /^(india|in)$/i.test(country));
   if (looksIndian) address = await lookupIndiaPincode(pincode);
 
-  // Coordinates: Nominatim, structured first then freeform.
-  let hit = await throttled(() =>
-    queryNominatim({
-      postalcode: pincode,
-      city: address?.city || city,
-      state: address?.state || state,
-      country: address?.country || country,
-    }),
-  );
+  // Coordinates: Nominatim, structured first then freeform. `county` (the district)
+  // disambiguates towns that share a name across multiple districts in the same
+  // state — without it, e.g. "Rayachoti" can match a same-named village elsewhere.
+  // It's a soft preference, not a hard filter: the postal API's district names are
+  // sometimes older/renamed versions of OSM's admin names (e.g. "Cuddapah" vs OSM's
+  // "YSR Kadapa"), so requiring an exact county match can turn a working lookup
+  // into a failed one — always fall back to the no-county attempt if it comes up empty.
+  const baseParams = {
+    postalcode: pincode,
+    city: address?.city || city,
+    state: address?.state || state,
+    country: address?.country || country,
+  };
+  let hit = address?.district
+    ? await throttled(() => queryNominatim({ ...baseParams, county: address.district }))
+    : null;
+  if (!hit) hit = await throttled(() => queryNominatim(baseParams));
   if (!hit) {
-    const q = [pincode, city, state, country].filter(Boolean).join(", ");
+    const q = [pincode, city, address?.district, state, country].filter(Boolean).join(", ");
     hit = await throttled(() => queryNominatim({ q }));
   }
   if (!hit) throw err("could not geocode that location", 422);
