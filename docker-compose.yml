@@ -54,6 +54,14 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5}
+      # Nearby-competitors / site-score data — see backend/.env.example for details.
+      GEOAPIFY_API_KEY: ${GEOAPIFY_API_KEY:-}
+      # Email verification codes — logged to console instead if unset.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-BizIntel <no-reply@bizintel.app>}
     ports:
       - "${BACKEND_PORT:-4000}:4000"
     depends_on:
