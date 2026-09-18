@@ -145,8 +145,11 @@ function makeThrottle(minGapMs) {
 const throttled = makeThrottle(1100); // Nominatim usage policy: max 1 req/s
 
 const norm = (s) => (s || "").trim();
+// v2: bumped after the district-HQ-vs-actual-town fix (Block preferred over District)
+// so previously cached wrong results (keyed without a version) are bypassed instead
+// of being served forever — geocode_cache has no TTL.
 const geoKey = (p) =>
-  [p.pincode, p.city, p.state, p.country].map((s) => norm(s).toLowerCase()).join("|");
+  "v2|" + [p.pincode, p.city, p.state, p.country].map((s) => norm(s).toLowerCase()).join("|");
 
 /** Pull city/state/country out of a Nominatim `address` object (fields vary a lot). */
 function pickAddress(a = {}) {
@@ -548,7 +551,9 @@ export async function nearby(params) {
   const keyword = keywordFor(params?.name, params?.category);
   const selectors = NEARBY_SELECTORS[keyword] || NEARBY_SELECTORS.restaurant;
 
-  const key = `nearby:v4:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}:${radius}`;
+  // v5: bumped so results cached before GEOAPIFY_API_KEY was configured (Overpass-only,
+  // pre-fix) aren't served for up to 7 more days — force a fresh, Geoapify-backed lookup.
+  const key = `nearby:v5:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}:${radius}`;
   const mem = fromCache(key);
   if (mem) return { ...mem, source: "cache" };
   const dbHit = await getCachedNearby(key);
@@ -710,7 +715,8 @@ export async function siteScore(params) {
   const competition = Math.max(0, Math.min(100, Number(params?.competition) || 0));
   const keyword = keywordFor(params?.name, params?.category);
 
-  const key = `site:v3:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}`;
+  // v4: same reason as the nearby cache bump above.
+  const key = `site:v4:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}`;
   const mem = fromCache(key);
   if (mem) return { ...mem, source: "cache" };
   const dbHit = await getCachedNearby(key);
