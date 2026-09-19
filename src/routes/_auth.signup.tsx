@@ -31,7 +31,7 @@ function SignUp() {
   const [orgName, setOrgName] = useState("");
   const [industry, setIndustry] = useState("");
   const [companySize, setCompanySize] = useState("");
-  const [country, setCountry] = useState("");
+  const [country, setCountry] = useState("India");
   const [agree, setAgree] = useState(true);
   const [loading, setLoading] = useState(false);
 
@@ -129,7 +129,7 @@ function SignUp() {
               <Select value={country} onValueChange={setCountry}>
                 <SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger>
                 <SelectContent>
-                  {["India","United States","United Kingdom","Canada","Australia","Singapore","United Arab Emirates","Other"].map((c) => (
+                  {["India"].map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>

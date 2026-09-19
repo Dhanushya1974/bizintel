@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { motion } from "motion/react";
 import { ArrowLeft, Check, Lightbulb, Loader2, MapPin, Sparkles, Wand2 } from "lucide-react";
@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { useAuth, useRequireAuth } from "@/lib/auth";
 import { recommendIdeas, type Recommendation } from "@/lib/recommend";
 import { geocodeLocation } from "@/lib/geo";
+import { classifyIdea } from "@/lib/opportunity-insights";
 
 export const Route = createFileRoute("/setup")({
   head: () => ({ meta: [{ title: "Get started — BizIntel" }] }),
@@ -30,7 +31,7 @@ export const Route = createFileRoute("/setup")({
 
 const CATEGORIES = ["Any", "Food & Beverage", "Retail", "Health & Wellness", "Consumer Services", "Technology", "Education", "Hospitality", "Other"];
 const BUDGETS = ["Under ₹1 Lakh", "₹1–5 Lakhs", "₹5–25 Lakhs", "₹25 Lakhs–1 Crore", "Above ₹1 Crore"];
-const COUNTRIES = ["India", "United States", "United Kingdom", "Canada", "Australia", "Singapore", "United Arab Emirates", "Other"];
+const COUNTRIES = ["India"];
 const EXPERIENCE = ["No experience", "1–2 years", "3–5 years", "6–10 years", "10+ years"];
 const TIMELINES = ["Immediately", "1–3 months", "3–6 months", "6–12 months", "Just exploring"];
 const CHANNELS = ["Storefront", "Online", "Either"];
@@ -46,7 +47,7 @@ function Setup() {
   const [mode, setMode] = useState<"own-idea" | "ai">("ai");
 
   // shared
-  const [country, setCountry] = useState(user?.country ?? "");
+  const [country, setCountry] = useState("India");
   const [stateName, setStateName] = useState(user?.state ?? "");
   const [city, setCity] = useState(user?.city ?? "");
   const [pincode, setPincode] = useState(user?.pincode ?? "");
@@ -69,7 +70,7 @@ function Setup() {
 
   if (!user) return null;
 
-  /** On pincode blur: fill in city + state and remember coordinates for the map. */
+  /** Fill in city + state and remember coordinates for the map. */
   const autofillFromPincode = async (pin: string) => {
     const p = pin.trim();
     if (!/^\d{4,}$/.test(p)) return;
@@ -87,6 +88,16 @@ function Setup() {
     }
   };
 
+  // Auto-fill city/state a moment after the user stops typing a valid pincode,
+  // so they don't have to tab out of the field for it to kick in.
+  useEffect(() => {
+    const p = pincode.trim();
+    if (!/^\d{4,}$/.test(p)) return;
+    const t = setTimeout(() => autofillFromPincode(p), 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pincode, country]);
+
   const persist = (patch: Parameters<typeof updateUser>[0]) => {
     updateUser({
       country,
@@ -103,12 +114,36 @@ function Setup() {
     navigate({ to: "/dashboard" });
   };
 
-  const submitOwnIdea = (e: React.FormEvent) => {
+  const submitOwnIdea = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!idea.trim()) return toast.error("Describe your idea");
     if (!city.trim() || !pincode.trim()) return toast.error("Enter your city and pincode");
     if (!budget) return toast.error("Choose a budget");
-    persist({ mode: "own-idea", idea: idea.trim(), focusOpportunityId: undefined });
+
+    // Idea + location drive the dashboard: match the idea to its closest opportunity
+    // and make sure the location is geocoded so map-based tabs have coordinates.
+    const { oppId, category: matched } = classifyIdea(idea);
+    let coords = geo;
+    if (!coords && /^\d{4,}$/.test(pincode.trim())) {
+      setPinBusy(true);
+      try {
+        const g = await geocodeLocation({ pincode: pincode.trim(), country });
+        coords = { lat: g.latitude, lng: g.longitude };
+      } catch {
+        /* offline geocoder — dashboard still works from city / pincode */
+      } finally {
+        setPinBusy(false);
+      }
+    }
+    persist({
+      mode: "own-idea",
+      idea: idea.trim(),
+      focusOpportunityId: oppId,
+      industry: matched,
+      ...(coords && !geo
+        ? { geoLat: coords.lat, geoLng: coords.lng, siteLat: undefined, siteLng: undefined, siteLabel: undefined }
+        : {}),
+    });
   };
 
   const runRecommend = async (e: React.FormEvent) => {
@@ -217,7 +252,6 @@ function Setup() {
                           placeholder="e.g. 411001"
                           value={pincode}
                           onChange={(e) => setPincode(e.target.value)}
-                          onBlur={(e) => autofillFromPincode(e.target.value)}
                         />
                         {pinBusy && (
                           <Loader2 className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
@@ -245,7 +279,7 @@ function Setup() {
                     <Label>{mode === "own-idea" ? "Category" : "Category interest"}</Label>
                     <Select value={category} onValueChange={setCategory}>
                       <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                      <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                      <SelectContent>{(mode === "ai" ? CATEGORIES.filter((c) => c !== "Any" && c !== "Other") : CATEGORIES).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1.5">

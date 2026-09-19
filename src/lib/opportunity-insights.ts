@@ -25,11 +25,53 @@ function seeded(seed: string) {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const clamp = (n: number) => Math.round(Math.max(5, Math.min(100, n)));
 
-/** Resolve which opportunity the whole section is about, matching the dashboard's logic. */
+/** Best-guess reference opportunity + category for a free-text business idea. */
+export function classifyIdea(text: string): { oppId: string; category: string } {
+  const t = text.toLowerCase();
+  if (/educat|school|tuition|tutor|coaching|academy|institute|classes|training|learning|teach|course|kindergarten|preschool|study/.test(t))
+    return { oppId: "opp-6", category: "Education" };
+  if (/gym|fitness|yoga|pilates|\bspa\b|sal+o+n|parlou?r|beauty|nail|barber|wellness|studio|clinic|therapy|dental|physio/.test(t))
+    return { oppId: "opp-2", category: "Health & Wellness" };
+  if (/\bpets?\b|\bdogs?\b|\bcats?\b|\bvet\b|groom|daycare|laundry|dry clean|repair|cleaning|tailor|barber|courier/.test(t))
+    return { oppId: "opp-4", category: "Consumer Services" };
+  if (/wine|\bbar\b|\bpub\b|brew|liquor/.test(t)) return { oppId: "opp-3", category: "Food & Beverage" };
+  if (/poke|bowl|salad|fast.?casual|quick.?service/.test(t))
+    return { oppId: "opp-5", category: "Food & Beverage" };
+  if (/software|\bit\b|computer|electronics|mobile|gadget|app\b|tech/.test(t))
+    return { oppId: "opp-1", category: "Technology" };
+  if (/shop|store|boutique|retail|mart|showroom|clothing|garment|supermarket/.test(t))
+    return { oppId: "opp-1", category: "Retail" };
+  if (/hotel|resort|lodge|homestay|hostel|guest ?house/.test(t))
+    return { oppId: "opp-1", category: "Hospitality" };
+  return { oppId: "opp-1", category: "Other" };
+}
+
+/**
+ * The one idea this whole section is about. For the user's own idea the name and
+ * category come from what they typed, so live competitor / location / market lookups
+ * search for THAT business — the base opportunity only supplies modeled numbers.
+ */
 export function resolveFocusOpportunity(opts: {
   focusOpportunityId?: string;
   industry?: string;
+  idea?: string;
+  ownIdea?: boolean;
 }): Opportunity {
+  const idea = opts.idea?.trim();
+  if (opts.ownIdea && idea) {
+    const { oppId, category } = classifyIdea(idea);
+    const base = OPPORTUNITIES.find((o) => o.id === oppId) ?? OPPORTUNITIES[0];
+    const exact = false;
+    return {
+      ...base,
+      name: idea,
+      category,
+      rationale: exact
+        ? base.rationale
+        : `Modeled from typical ${category} benchmarks. The competitor, location and market figures for your pincode are live data.`,
+      risks: exact ? base.risks : ["Local competition intensity", "Lease and fit-out costs"],
+    };
+  }
   const byId = opts.focusOpportunityId
     ? OPPORTUNITIES.find((o) => o.id === opts.focusOpportunityId)
     : undefined;
@@ -96,12 +138,21 @@ const COMPETITOR_POOL: Record<string, string[]> = {
     "HomeHelp Local",
   ],
 };
+const EDU_POOL = [
+  "Bright Minds Academy",
+  "Scholars Coaching Institute",
+  "Learn Hub",
+  "Toppers Tutorial",
+  "Wisdom Learning Center",
+  "Alpha Study Circle",
+];
+
 const GENERIC_POOL = Array.from({ length: 8 }, (_, i) => `Local operator ${i + 1}`);
 
 /** Nearby competitors — more of them, and closer, when the idea's competition score is high. */
 export function competitorsFor(o: Opportunity): Competitor[] {
   const rnd = seeded(o.id + ":comp");
-  const pool = COMPETITOR_POOL[o.category] ?? GENERIC_POOL;
+  const pool = o.category === "Education" ? EDU_POOL : (COMPETITOR_POOL[o.category] ?? GENERIC_POOL);
   const count = Math.max(2, Math.min(pool.length, Math.round(2 + (o.competition / 100) * 5)));
   return Array.from({ length: count }, (_, i) => ({
     id: `${o.id}-c${i + 1}`,

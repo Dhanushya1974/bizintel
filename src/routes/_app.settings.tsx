@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Lightbulb, Loader2, Sparkles } from "lucide-react";
@@ -41,10 +41,11 @@ function Settings() {
   const { user, updateUser } = useAuth();
   const mode = user?.mode ?? "own-idea";
   const [city, setCity] = useState(user?.city ?? "");
+  const [stateName, setStateName] = useState(user?.state ?? "");
   const [pincode, setPincode] = useState(user?.pincode ?? "");
   const [pinBusy, setPinBusy] = useState(false);
 
-  /** On pincode blur: persist it, then fill in city + coordinates from the geocoder. */
+  /** Persist the pincode, then fill in city + coordinates from the geocoder. */
   const applyPincode = async (pin: string) => {
     updateUser({ pincode: pin });
     if (!/^\d{4,}$/.test(pin.trim())) return;
@@ -63,7 +64,10 @@ function Settings() {
         patch.city = g.address.city;
         setCity(g.address.city);
       }
-      if (g.address?.state) patch.state = g.address.state;
+      if (g.address?.state) {
+        patch.state = g.address.state;
+        setStateName(g.address.state);
+      }
       updateUser(patch);
       toast.success("Location updated on the map");
     } catch {
@@ -72,6 +76,16 @@ function Settings() {
       setPinBusy(false);
     }
   };
+
+  // Auto-fill city/state a moment after the user stops typing a valid pincode,
+  // so they don't have to tab out of the field for it to kick in.
+  useEffect(() => {
+    const p = pincode.trim();
+    if (!/^\d{4,}$/.test(p)) return;
+    const t = setTimeout(() => applyPincode(p), 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pincode]);
 
   return (
     <div>
@@ -119,7 +133,7 @@ function Settings() {
                   </div>
                 ) : null}
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <div className="space-y-1.5">
                     <Label>Category</Label>
                     <Select value={user?.industry ?? ""} onValueChange={(v) => updateUser({ industry: v })}>
@@ -147,7 +161,7 @@ function Settings() {
                         placeholder="e.g. 411001"
                         value={pincode}
                         onChange={(e) => setPincode(e.target.value)}
-                        onBlur={(e) => applyPincode(e.target.value)}
+                        onBlur={(e) => updateUser({ pincode: e.target.value })}
                       />
                       {pinBusy && (
                         <Loader2 className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
@@ -162,6 +176,16 @@ function Settings() {
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
                       onBlur={(e) => updateUser({ city: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="state">State</Label>
+                    <Input
+                      id="state"
+                      placeholder="Fills in from pincode"
+                      value={stateName}
+                      onChange={(e) => setStateName(e.target.value)}
+                      onBlur={(e) => updateUser({ state: e.target.value })}
                     />
                   </div>
                 </div>

@@ -330,8 +330,34 @@ const NEARBY_SELECTORS = {
     `["shop"~"^(pet|pet_grooming)$"]`,
     `["amenity"~"^(veterinary|animal_boarding)$"]`,
   ],
+  beauty: [
+    `["shop"~"^(beauty|hairdresser|cosmetics|massage|tattoo)$"]`,
+    `["amenity"="spa"]`,
+    `["leisure"="spa"]`,
+  ],
+  medical: [
+    `["amenity"~"^(clinic|dentist|doctors|pharmacy|hospital)$"]`,
+    `["healthcare"]`,
+  ],
+  automotive: [
+    `["shop"~"^(car|car_repair|car_parts|tyres|motorcycle)$"]`,
+    `["amenity"~"^(fuel|car_wash|charging_station)$"]`,
+  ],
+  services: [
+    `["shop"~"^(laundry|dry_cleaning|tailor|shoe_repair|copyshop)$"]`,
+    `["craft"~"^(tailor|shoemaker|photographer|electronics_repair|locksmith)$"]`,
+    `["amenity"="dry_cleaning"]`,
+  ],
+  professional: [
+    `["office"~"^(lawyer|accountant|estate_agent|insurance|coworking|consulting|financial)$"]`,
+  ],
+  entertainment: [
+    `["amenity"~"^(cinema|theatre|nightclub)$"]`,
+    `["leisure"~"^(bowling_alley|amusement_arcade|water_park)$"]`,
+    `["tourism"="museum"]`,
+  ],
   retail: [
-    `["shop"~"^(clothes|shoes|department_store|mall|supermarket|convenience|electronics|furniture|jewelry|gift|variety_store)$"]`,
+    `["shop"~"^(clothes|shoes|department_store|mall|supermarket|convenience|electronics|furniture|jewelry|gift|variety_store|hardware|doityourself|florist|garden_centre|appliance)$"]`,
   ],
   tech: [
     `["shop"~"^(computer|electronics|mobile_phone)$"]`,
@@ -352,7 +378,7 @@ const NEARBY_SELECTORS = {
 const CATEGORY_KEYWORD = {
   "Food & Beverage": "restaurant",
   "Health & Wellness": "fitness",
-  "Consumer Services": "pet",
+  "Consumer Services": "services",
   Retail: "retail",
   Technology: "tech",
   Education: "education",
@@ -372,6 +398,26 @@ const BROAD_SELECTORS = {
     `["sport"]`,
   ],
   pet: [`["shop"~"pet"]`, `["amenity"~"^(veterinary|animal_boarding|animal_shelter)$"]`],
+  beauty: [
+    `["shop"~"^(beauty|hairdresser|cosmetics|massage|tattoo)$"]`,
+    `["amenity"="spa"]`,
+    `["leisure"="spa"]`,
+  ],
+  medical: [`["amenity"~"^(clinic|dentist|doctors|pharmacy|hospital)$"]`, `["healthcare"]`],
+  automotive: [
+    `["shop"~"^(car|car_repair|car_parts|tyres|motorcycle)$"]`,
+    `["amenity"~"^(fuel|car_wash|charging_station)$"]`,
+  ],
+  services: [
+    `["shop"~"^(laundry|dry_cleaning|tailor|shoe_repair|copyshop)$"]`,
+    `["craft"]`,
+  ],
+  professional: [`["office"]`],
+  entertainment: [
+    `["amenity"~"^(cinema|theatre|nightclub)$"]`,
+    `["leisure"~"^(bowling_alley|amusement_arcade|water_park)$"]`,
+    `["tourism"]`,
+  ],
   retail: [`["shop"]`],
   tech: [`["shop"~"^(computer|electronics|mobile_phone|hardware)$"]`, `["office"]`],
   education: [`["amenity"~"^(school|college|university|kindergarten|language_school)$"]`],
@@ -386,6 +432,12 @@ const KEYWORD_FAMILY = {
   restaurant: "food",
   fitness: "fitness",
   pet: "pet",
+  beauty: "beauty",
+  medical: "medical",
+  automotive: "automotive",
+  services: "services",
+  professional: "professional",
+  entertainment: "entertainment",
   retail: "retail",
   tech: "tech",
   education: "education",
@@ -396,16 +448,23 @@ const KEYWORD_FAMILY = {
 function keywordFor(name = "", category = "") {
   const n = String(name).toLowerCase();
   if (/coffee|caf[eé]/.test(n)) return "coffee";
+  if (/educat|school|tuition|tutor|coaching|academy|institute|classes|training|learning|teach|course|kindergarten|preschool|study/.test(n)) return "education";
   if (/bakery|patisserie|bread/.test(n)) return "bakery";
   if (/wine/.test(n)) return "wine";
   if (/\b(bar|pub|brew|tap)\b/.test(n)) return "bar";
+  if (/sal+o+n|parlou?r|beauty|\bspa\b|barber|nail|cosmetic|tattoo/.test(n)) return "beauty";
+  if (/\bclinic|dentist|dental|\bdoctor|physio|therapy|hospital|pharmac|chiropractor|optometrist|optician\b/.test(n)) return "medical";
   if (/pilates|yoga|fitness|gym|wellness|studio/.test(n)) return "fitness";
   if (/\bpet|dog|grooming|\bvet\b|daycare/.test(n)) return "pet";
+  if (/car (repair|wash|dealer)|auto ?repair|\bgarage\b|mechanic|tyre|\btire\b|automotive|motorcycle repair|petrol|gas station|fuel station|ev charging/.test(n)) return "automotive";
+  if (/laundry|dry ?clean|\btailor\b|shoe repair|shoemaker|locksmith|courier|printing|photograph(y|er)/.test(n)) return "services";
+  if (/law firm|lawyer|attorney|legal services|accountant|accounting firm|real estate|realtor|estate agent|insurance agency|insurance broker|consult(ing|ancy)|coworking/.test(n)) return "professional";
+  if (/cinema|movie theate?r|\btheatre\b|\btheater\b|bowling|arcade|\bmuseum\b|amusement/.test(n)) return "entertainment";
   if (/poke|bowl|salad|restaurant|kitchen|eatery|diner|\bfood\b/.test(n)) return "restaurant";
   if (/\b(hotel|resort|lodge|homestay|hostel|stay)\b/.test(n)) return "hospitality";
   if (/\b(school|academy|tutor|coaching|institute|classes|training)\b/.test(n)) return "education";
-  if (/\b(software|\bit\b|computer|electronics|repair|mobile|gadget)\b/.test(n)) return "tech";
-  if (/\b(shop|store|boutique|retail|mart|showroom)\b/.test(n)) return "retail";
+  if (/\b(software|\bit\b|computer|electronics|mobile|gadget)\b/.test(n)) return "tech";
+  if (/grocery|kirana|supermarket|hardware store|furniture store|florist|\b(shop|store|boutique|retail|mart|showroom)\b/.test(n)) return "retail";
   return CATEGORY_KEYWORD[category] || "generic";
 }
 
@@ -417,6 +476,12 @@ const GEOAPIFY_CATEGORIES = {
   food: "catering,commercial.food_and_drink",
   fitness: "sport,leisure.fitness_centre",
   pet: "pet,service.veterinary",
+  beauty: "service.beauty",
+  medical: "healthcare.clinic_or_praxis,healthcare.dentist,healthcare.pharmacy,healthcare.hospital",
+  automotive: "service.vehicle.repair,service.vehicle.car_wash,service.vehicle.fuel,service.vehicle.charging_station",
+  services: "service.cleaning.laundry,service.cleaning.dry_cleaning,service.tailor",
+  professional: "office.lawyer,office.accountant,office.estate_agent,office.insurance,office.coworking",
+  entertainment: "entertainment.cinema,entertainment.culture.theatre,entertainment.museum,entertainment.bowling_alley",
   retail: "commercial",
   tech: "commercial.electronics,office.it,office.coworking",
   education: "education",
@@ -424,10 +489,21 @@ const GEOAPIFY_CATEGORIES = {
   generic: "commercial,office,catering",
 };
 
+// Food keywords share one family, so pin each to its own Geoapify categories —
+// otherwise a coffee/bakery search returns every restaurant nearby.
+const GEOAPIFY_KEYWORD_CATEGORIES = {
+  coffee: "catering.cafe,commercial.food_and_drink.bakery",
+  bakery: "commercial.food_and_drink.bakery,catering.cafe",
+  wine: "catering.bar,catering.pub",
+  bar: "catering.bar,catering.pub",
+  restaurant: "catering.restaurant,catering.fast_food",
+};
+
 async function geoapifyNearby(lat, lng, radius, keyword) {
   const apiKey = process.env.GEOAPIFY_API_KEY;
   if (!apiKey) return null;
-  const categories = GEOAPIFY_CATEGORIES[KEYWORD_FAMILY[keyword] || "food"];
+  const categories =
+    GEOAPIFY_KEYWORD_CATEGORIES[keyword] || GEOAPIFY_CATEGORIES[KEYWORD_FAMILY[keyword] || "food"];
   const url = new URL("https://api.geoapify.com/v2/places");
   url.searchParams.set("categories", categories);
   url.searchParams.set("filter", `circle:${lng},${lat},${radius}`);
@@ -553,7 +629,7 @@ export async function nearby(params) {
 
   // v5: bumped so results cached before GEOAPIFY_API_KEY was configured (Overpass-only,
   // pre-fix) aren't served for up to 7 more days — force a fresh, Geoapify-backed lookup.
-  const key = `nearby:v5:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}:${radius}`;
+  const key = `nearby:v7:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}:${radius}`;
   const mem = fromCache(key);
   if (mem) return { ...mem, source: "cache" };
   const dbHit = await getCachedNearby(key);
@@ -716,7 +792,7 @@ export async function siteScore(params) {
   const keyword = keywordFor(params?.name, params?.category);
 
   // v4: same reason as the nearby cache bump above.
-  const key = `site:v4:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}`;
+  const key = `site:v5:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}`;
   const mem = fromCache(key);
   if (mem) return { ...mem, source: "cache" };
   const dbHit = await getCachedNearby(key);

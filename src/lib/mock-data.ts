@@ -145,6 +145,22 @@ export const OPPORTUNITIES: Opportunity[] = [
     risks: ["Category fatigue", "Delivery margin pressure"],
     tags: ["Saturated"],
   },
+  {
+    id: "opp-6",
+    name: "Coaching & Learning Center",
+    category: "Education",
+    score: 74,
+    confidence: "Medium",
+    demand: 78,
+    competition: 52,
+    investmentMin: 30000,
+    investmentMax: 90000,
+    breakEvenMonths: 14,
+    rationale:
+      "Steady, recurring demand from families and students; results and reputation drive enrolment more than foot traffic.",
+    risks: ["Faculty hiring and retention", "Seasonal enrolment"],
+    tags: ["Recurring demand"],
+  },
 ];
 
 export const COMPETITORS: Competitor[] = [

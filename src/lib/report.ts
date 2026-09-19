@@ -118,6 +118,8 @@ export async function getProjectReport(id: string): Promise<ProjectReport | null
       opportunity: resolveFocusOpportunity({
         focusOpportunityId: real.focusOpportunityId,
         industry: real.category,
+        idea: real.businessType,
+        ownIdea: true,
       }),
       lat: real.lat,
       lng: real.lng,

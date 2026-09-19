@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/lib/auth";
 import { geocodeLocation } from "@/lib/geo";
+import { classifyIdea } from "@/lib/opportunity-insights";
 
 const TYPES = ["coffee", "bakery", "wine bar", "pilates", "pet daycare", "poke bowls", "other"] as const;
 type BizType = (typeof TYPES)[number];
@@ -30,17 +31,6 @@ const TYPE_TO_CATEGORY: Record<Exclude<BizType, "other">, string> = {
   "pet daycare": "Consumer Services",
   "poke bowls": "Food & Beverage",
 };
-
-/** Best-guess reference opportunity + category for a free-text business idea. */
-function classify(text: string): { oppId: string; category: string } {
-  const t = text.toLowerCase();
-  if (/gym|fitness|yoga|pilates|spa|salon|wellness|studio|clinic|therapy|dental/.test(t))
-    return { oppId: "opp-2", category: "Health & Wellness" };
-  if (/pet|dog|vet|groom|daycare|laundry|dry clean|repair|cleaning|tailor|salon|barber|courier/.test(t))
-    return { oppId: "opp-4", category: "Consumer Services" };
-  if (/wine|bar|pub|brew|liquor/.test(t)) return { oppId: "opp-3", category: "Food & Beverage" };
-  return { oppId: "opp-1", category: "Food & Beverage" };
-}
 
 export const Route = createFileRoute("/_app/analysis/new")({
   head: () => ({ meta: [{ title: "New analysis — BizIntel" }] }),
@@ -64,7 +54,7 @@ function NewAnalysis() {
 
     const bizName = type === "other" ? custom : type;
     const { oppId, category } =
-      type === "other" ? classify(custom) : { oppId: TYPE_TO_OPP[type], category: TYPE_TO_CATEGORY[type] };
+      type === "other" ? classifyIdea(custom) : { oppId: TYPE_TO_OPP[type], category: TYPE_TO_CATEGORY[type] };
 
     setBusy(true);
     try {
@@ -83,7 +73,7 @@ function NewAnalysis() {
         state: g.address?.state ?? undefined,
         pincode: isPin ? q : undefined,
         // focus the Opportunities section on the chosen / closest business type
-        mode: "ai",
+        mode: type === "other" ? "own-idea" : "ai",
         idea: type === "other" ? bizName : undefined,
         focusOpportunityId: oppId,
         industry: category,

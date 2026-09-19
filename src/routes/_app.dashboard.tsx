@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { ArrowRight, Clock, MapPin, MessageSquare, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, BarChart3, Clock, Lightbulb, MapPin, MessageSquare, Sparkles, Store, TrendingUp, Users } from "lucide-react";
 import { PageHeader } from "@/components/brand/page-header";
 import { StatCard } from "@/components/brand/stat-card";
 import { ScoreRing } from "@/components/brand/score-ring";
@@ -9,11 +9,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { OPPORTUNITIES } from "@/lib/mock-data";
+import { resolveFocusOpportunity } from "@/lib/opportunity-insights";
 
 export const Route = createFileRoute("/_app/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — BizIntel" }] }),
   component: Dashboard,
 });
+
+const SECTIONS = [
+  { tab: "overview", label: "Opportunities", desc: "Idea score and how it compares with alternatives.", icon: Lightbulb },
+  { tab: "market", label: "Market research", desc: "Demand trend, demographics and market size.", icon: BarChart3 },
+  { tab: "competitors", label: "Competitors", desc: "Nearby businesses of the same kind.", icon: Store },
+  { tab: "location", label: "Location", desc: "Map and site score for your pincode.", icon: MapPin },
+  { tab: "insights", label: "Insights", desc: "Risks, opportunities and next steps.", icon: Sparkles },
+] as const;
 
 function Dashboard() {
   const { user } = useAuth();
@@ -22,13 +31,12 @@ function Dashboard() {
   const place = [user?.city, user?.pincode].filter(Boolean).join(" · ");
 
   // The single opportunity this dashboard is about.
-  const byId = user?.focusOpportunityId
-    ? OPPORTUNITIES.find((o) => o.id === user.focusOpportunityId)
-    : undefined;
-  const byCategory = category
-    ? [...OPPORTUNITIES].filter((o) => o.category === category).sort((a, b) => b.score - a.score)[0]
-    : undefined;
-  const focus = byId ?? byCategory ?? [...OPPORTUNITIES].sort((a, b) => b.score - a.score)[0];
+  const focus = resolveFocusOpportunity({
+    focusOpportunityId: user?.focusOpportunityId,
+    industry: category,
+    idea: user?.idea,
+    ownIdea: !isAi,
+  });
 
   const heading = isAi ? focus.name : user?.idea || "Your idea";
   const context = [category, place, user?.budget].filter(Boolean).join(" · ");
@@ -94,6 +102,29 @@ function Dashboard() {
           <StatCard icon={TrendingUp} label="Demand" value={focus.demand} />
           <StatCard icon={Users} label="Competition" value={focus.competition} />
           <StatCard icon={Clock} label="Break-even" value={`${focus.breakEvenMonths}mo`} />
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Explore {isAi ? "this pick" : "your idea"}{user?.city ? ` in ${user.city}` : ""}
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {SECTIONS.map((s) => (
+              <Link key={s.tab} to="/opportunities" search={{ tab: s.tab }}>
+                <Card className="h-full transition hover:border-[color:var(--color-brand)]/40 hover:shadow-md">
+                  <CardContent className="flex items-start gap-3 p-4">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[color:var(--color-brand)]/10 text-[color:var(--color-brand)]">
+                      <s.icon className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold">{s.label}</span>
+                      <span className="block text-xs text-muted-foreground">{s.desc}</span>
+                    </span>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
         </div>
 
         {isAi && otherMatches.length > 0 && (

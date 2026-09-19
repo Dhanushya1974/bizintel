@@ -37,12 +37,14 @@ export const Route = createFileRoute("/_app/opportunities/")({
 /** The one idea this whole section is about — picked in the dashboard / setup. */
 function useFocusOpportunity() {
   const { user } = useAuth();
+  const ownIdea = (user?.mode ?? "own-idea") === "own-idea";
   const opportunity = resolveFocusOpportunity({
     focusOpportunityId: user?.focusOpportunityId,
     industry: user?.industry,
+    idea: user?.idea,
+    ownIdea,
   });
-  const ownIdea = (user?.mode ?? "own-idea") === "own-idea";
-  const displayName = ownIdea && user?.idea ? user.idea : opportunity.name;
+  const displayName = opportunity.name;
   return { opportunity, displayName, ownIdea };
 }
 
