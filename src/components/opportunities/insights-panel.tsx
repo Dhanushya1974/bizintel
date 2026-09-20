@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, BarChart3, Info, Lightbulb, Sparkles, TrendingUp } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, Info, Lightbulb, Loader2, MinusCircle, Sparkles, TrendingUp, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Opportunity } from "@/lib/mock-data";
-import { analyzeIdea, researchIdea, type IdeaProfile, type IdeaResearch } from "@/lib/geo";
+import { useAuth } from "@/lib/auth";
+import { runIdeaWorkflow, type IdeaWorkflow } from "@/lib/geo";
 import { insightsFor, type IdeaInsight } from "@/lib/opportunity-insights";
 
 const ICON: Record<IdeaInsight["kind"], typeof TrendingUp> = {
@@ -16,34 +17,53 @@ const ICON: Record<IdeaInsight["kind"], typeof TrendingUp> = {
 
 export function InsightsPanel({ opportunity, location }: { opportunity: Opportunity; location?: string }) {
   const insights = insightsFor(opportunity);
-  const [profile, setProfile] = useState<IdeaProfile | null>(null);
+  const { user } = useAuth();
+  const lat = user?.siteLat ?? user?.geoLat;
+  const lng = user?.siteLng ?? user?.geoLng;
+  const [flow, setFlow] = useState<IdeaWorkflow | null>(null);
+  const [flowState, setFlowState] = useState<"loading" | "done" | "error">("loading");
   useEffect(() => {
     let alive = true;
-    setProfile(null);
-    analyzeIdea(opportunity.name, opportunity.category)
-      .then((p) => alive && setProfile(p))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [opportunity.name, opportunity.category]);
-  const [research, setResearch] = useState<IdeaResearch | null>(null);
-  const [researchState, setResearchState] = useState<"loading" | "done" | "error">("loading");
-  useEffect(() => {
-    let alive = true;
-    setResearch(null);
-    setResearchState("loading");
-    researchIdea(opportunity.name, location)
+    setFlow(null);
+    setFlowState("loading");
+    runIdeaWorkflow({
+      name: opportunity.name,
+      category: opportunity.category,
+      location,
+      lat: typeof lat === "number" ? lat : undefined,
+      lng: typeof lng === "number" ? lng : undefined,
+    })
       .then((r) => {
         if (!alive) return;
-        setResearch(r);
-        setResearchState("done");
+        setFlow(r);
+        setFlowState("done");
       })
-      .catch(() => alive && setResearchState("error"));
+      .catch(() => alive && setFlowState("error"));
     return () => {
       alive = false;
     };
-  }, [opportunity.name, location]);
+  }, [opportunity.name, opportunity.category, location, lat, lng]);
+  const profile = flow?.steps.understand.status === "ok" ? flow.steps.understand.data : null;
+  const research = flow?.steps.research.status === "ok" ? flow.steps.research.data : null;
+  const researchState: "loading" | "done" | "error" =
+    flowState === "loading" ? "loading" : flow?.steps.research.status === "ok" ? "done" : "error";
+  const stepLine = (label: string, s: IdeaWorkflow["steps"][keyof IdeaWorkflow["steps"]] | undefined, detail?: string) => (
+    <li className="flex items-center gap-2 text-sm">
+      {!s ? (
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      ) : s.status === "ok" ? (
+        <CheckCircle2 className="h-4 w-4 text-[color:var(--color-teal)]" />
+      ) : s.status === "skipped" ? (
+        <MinusCircle className="h-4 w-4 text-muted-foreground" />
+      ) : (
+        <XCircle className="h-4 w-4 text-destructive" />
+      )}
+      <span className="font-medium">{label}</span>
+      <span className="text-muted-foreground">
+        {!s ? "working…" : s.status === "ok" ? detail : s.status === "skipped" ? s.reason : s.error}
+      </span>
+    </li>
+  );
   const list = (title: string, items?: string[]) =>
     items && items.length > 0 ? (
       <div>
@@ -57,6 +77,26 @@ export function InsightsPanel({ opportunity, location }: { opportunity: Opportun
     ) : null;
   return (
     <div className="space-y-4">
+      <Card>
+        <CardContent className="space-y-2 p-5">
+          <p className="font-semibold">Analysis workflow</p>
+          <ol className="space-y-1.5">
+            {stepLine("1. Understand the idea", flow?.steps.understand, profile ? `Interpreted as “${profile.businessType}”` : undefined)}
+            {stepLine(
+              "2. Competitors near you",
+              flow?.steps.competitors,
+              flow?.steps.competitors.status === "ok" ? `${flow.steps.competitors.data.count} real businesses found` : undefined,
+            )}
+            {stepLine("3. Neighbourhood data", flow?.steps.market, "Population, footfall and access signals loaded")}
+            {stepLine(
+              "4. Web market research",
+              flow?.steps.research,
+              research?.available === false ? "Not configured" : `${research?.sources?.length ?? 0} sources cited`,
+            )}
+          </ol>
+          {flowState === "error" && <p className="text-sm text-muted-foreground">The analysis could not be run right now.</p>}
+        </CardContent>
+      </Card>
       <Card>
         <CardContent className="space-y-3 p-5">
           <div className="flex items-center gap-2">

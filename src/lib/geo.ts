@@ -203,3 +203,40 @@ export async function researchIdea(name: string, location?: string): Promise<Ide
   if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
   return data as IdeaResearch;
 }
+
+type WorkflowStep<T> =
+  | { status: "ok"; ms: number; data: T }
+  | { status: "error"; ms: number; error: string }
+  | { status: "skipped"; reason: string };
+
+export type IdeaWorkflow = {
+  idea: string;
+  location: string | null;
+  steps: {
+    understand: WorkflowStep<IdeaProfile>;
+    competitors: WorkflowStep<NearbyResult>;
+    market: WorkflowStep<SiteScoreResult>;
+    research: WorkflowStep<IdeaResearch>;
+  };
+};
+
+/** The whole analysis in one call: understand the idea, then location data + web research. */
+export async function runIdeaWorkflow(p: {
+  name: string;
+  category?: string;
+  location?: string;
+  lat?: number;
+  lng?: number;
+}): Promise<IdeaWorkflow> {
+  const api = resolveApiUrl();
+  if (!api) throw new Error("Backend not reachable — start the API to run the analysis.");
+  const res = await fetch(`${api}/api/idea-workflow`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(p),
+    signal: AbortSignal.timeout(120_000),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+  return data as IdeaWorkflow;
+}
