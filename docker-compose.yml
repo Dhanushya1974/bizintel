@@ -57,6 +57,8 @@ services:
       # Google AI Studio key: free idea understanding + Google-Search-grounded web research.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
+      # Tavily web search (free tier) — real search results for the market research.
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5}
       # Nearby-competitors / site-score data — see backend/.env.example for details.
       GEOAPIFY_API_KEY: ${GEOAPIFY_API_KEY:-}

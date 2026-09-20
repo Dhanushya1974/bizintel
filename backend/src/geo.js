@@ -467,7 +467,7 @@ function keywordFor(name = "", category = "") {
   if (/poke|bowl|salad|restaurant|kitchen|eatery|diner|\bfood\b/.test(n)) return "restaurant";
   if (/\b(hotel|resort|lodge|homestay|hostel|stay)\b/.test(n)) return "hospitality";
   if (/\b(school|academy|tutor|coaching|institute|classes|training)\b/.test(n)) return "education";
-  if (/\b(software|\bit\b|computer|electronics|mobile|gadget)\b/.test(n)) return "tech";
+  if (/\b(software|\bit\b|computer|electronics|mobile|gadget|start-?ups?|saas|app development|web development)\b/.test(n)) return "tech";
   if (/grocery|kirana|supermarket|hardware store|furniture store|florist|\b(shop|store|boutique|retail|mart|showroom)\b/.test(n)) return "retail";
   return CATEGORY_KEYWORD[category] || "generic";
 }
@@ -484,10 +484,10 @@ const GEOAPIFY_CATEGORIES = {
   medical: "healthcare.clinic_or_praxis,healthcare.dentist,healthcare.pharmacy,healthcare.hospital",
   automotive: "service.vehicle.repair,service.vehicle.car_wash,service.vehicle.fuel,service.vehicle.charging_station",
   services: "service.cleaning.laundry,service.cleaning.dry_cleaning,service.tailor",
-  professional: "office.lawyer,office.accountant,office.estate_agent,office.insurance,office.coworking",
+  professional: "office.lawyer,office.accountant,office.estate_agent,office.insurance,office.company",
   entertainment: "entertainment.cinema,entertainment.culture.theatre,entertainment.museum,entertainment.bowling_alley",
   retail: "commercial",
-  tech: "commercial.electronics,office.it,office.coworking",
+  tech: "office.it,office.company,office.research,commercial.elektronics",
   education: "education",
   hospitality: "accommodation",
   generic: "commercial,office,catering",
@@ -516,7 +516,17 @@ async function geoapifyNearby(lat, lng, radius, keyword, prof) {
   url.searchParams.set("bias", `proximity:${lng},${lat}`);
   url.searchParams.set("limit", "40");
   url.searchParams.set("apiKey", apiKey);
-  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  let res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  if (res.status === 400) {
+    // A category we listed may be unsupported by Geoapify (e.g. a misspelt name): log why,
+    // then retry with the family's broad default instead of dropping to sparse Overpass.
+    console.warn(`[geoapify] 400 for "${categories}": ${(await res.text()).slice(0, 160)}`);
+    const fallback = GEOAPIFY_CATEGORIES[KEYWORD_FAMILY[keyword] || "food"];
+    if (fallback && fallback !== categories) {
+      url.searchParams.set("categories", fallback);
+      res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    }
+  }
   if (!res.ok) {
     console.warn(`[geoapify] HTTP ${res.status}`);
     throw err(`geoapify returned ${res.status}`, 502);
@@ -652,7 +662,7 @@ export async function nearby(params) {
 
   // v5: bumped so results cached before GEOAPIFY_API_KEY was configured (Overpass-only,
   // pre-fix) aren't served for up to 7 more days — force a fresh, Geoapify-backed lookup.
-  const key = `nearby:v9:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}:${radius}`;
+  const key = `nearby:v10:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}:${radius}`;
   const mem = fromCache(key);
   if (mem) return { ...mem, source: "cache" };
   const dbHit = await getCachedNearby(key);

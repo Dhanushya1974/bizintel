@@ -40,6 +40,8 @@ Reply with ONLY a JSON object, no prose, with these fields:
  "geoapifyCategories": array of Geoapify Places categories where direct competitors are listed (e.g. "service.vehicle.car_wash"), only if keyword is "custom",
  "osmTags": array of {"key": one of amenity|shop|craft|office|leisure|healthcare|tourism, "values": [OSM tag values]} where direct competitors are mapped, only if keyword is "custom"
 }
+"professional" means ONLY law firms, accountants, real estate agents, insurance brokers and consultancies. "tech" means IT / software / electronics businesses (an IT or software startup or company is "tech"). If the idea is vague (e.g. "startup company"), interpret it as the most likely concrete business: a small software/IT company.
+Valid Geoapify categories for custom searches include: office.it, office.company, office.research, office.coworking, commercial.elektronics, education.school, education.college, service.financial.bank; never invent category names.
 Pick "custom" only when no listed keyword precisely matches the business. Direct competitors only, never merely nearby businesses.`;
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";

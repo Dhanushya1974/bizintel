@@ -4,6 +4,7 @@ import cors from "cors";
 import { pool, waitForDb } from "./db.js";
 import { chat } from "./consultant.js";
 import { researchIdea } from "./research.js";
+import { runWorkflow } from "./workflow.js";
 import { resolveMapsLink, geocode, nearby, siteScore, analyzeIdea } from "./geo.js";
 import { requestLoginCode, verifyLoginCode } from "./auth.js";
 
@@ -137,6 +138,15 @@ app.post("/api/research-idea", async (req, res) => {
     res.json(await researchIdea(name, location));
   } catch (err) {
     res.status(502).json({ message: `Web research failed: ${err.message}` });
+  }
+});
+
+app.post("/api/idea-workflow", async (req, res) => {
+  try {
+    if (!req.body?.name) return res.status(400).json({ message: "name is required" });
+    res.json(await runWorkflow(req.body));
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
   }
 });
 

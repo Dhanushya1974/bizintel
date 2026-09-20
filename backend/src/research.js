@@ -108,9 +108,24 @@ async function ddgSearch(query, limit = 6) {
   return out;
 }
 
-/** Bing first (reliable from servers), DuckDuckGo as a fallback. */
+/** Tavily: a search API built for AI use; returns clean page text. Needs TAVILY_API_KEY (free tier). */
+async function tavilySearch(query, limit = 6) {
+  const res = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${process.env.TAVILY_API_KEY}` },
+    signal: AbortSignal.timeout(20_000),
+    body: JSON.stringify({ query, search_depth: "basic", max_results: limit, include_answer: false }),
+  });
+  if (!res.ok) throw new Error(`tavily ${res.status}`);
+  return ((await res.json()).results ?? [])
+    .filter((r) => /^https?:\/\//.test(r.url))
+    .map((r) => ({ title: String(r.title || r.url).slice(0, 120), url: r.url, snippet: String(r.content || "").slice(0, 700) }));
+}
+
+/** Tavily when a key is set, else Bing, then DuckDuckGo (both scraped, often degraded). */
 export async function webSearch(query, limit = 6) {
-  for (const engine of [bingSearch, ddgSearch]) {
+  const engines = [...(process.env.TAVILY_API_KEY ? [tavilySearch] : []), bingSearch, ddgSearch];
+  for (const engine of engines) {
     try {
       const r = await engine(query, limit);
       if (r.length) return r;
@@ -298,7 +313,7 @@ export async function researchIdea(idea, location) {
     // Same free tier, different models: when one is overloaded (503) the next usually answers.
     const models = [...new Set([GEMINI_MODEL, "gemini-flash-lite-latest", "gemini-3.5-flash"])];
     let err;
-    for (const mode of [groundedResearch, geminiResearch]) {
+    for (const mode of process.env.TAVILY_API_KEY ? [geminiResearch, groundedResearch] : [groundedResearch, geminiResearch]) {
       for (const model of models) {
         try {
           ({ body, sources } = await withRetry(() => mode(text, where, model, profile), 2));
