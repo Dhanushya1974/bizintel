@@ -308,7 +308,7 @@ function Opps() {
           <TabsContent value="market" className="mt-6"><MarketPanel opportunity={focus} /></TabsContent>
           <TabsContent value="competitors" className="mt-6"><CompetitorsPanel opportunity={focus} /></TabsContent>
           <TabsContent value="location" className="mt-6"><LocationPanel opportunity={focus} /></TabsContent>
-          <TabsContent value="insights" className="mt-6"><InsightsPanel opportunity={focus} /></TabsContent>
+          <TabsContent value="insights" className="mt-6"><InsightsPanel opportunity={focus} location={projectLocation === "Location not set" ? undefined : projectLocation} /></TabsContent>
         </Tabs>
       </div>
     </div>

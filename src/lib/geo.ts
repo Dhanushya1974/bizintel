@@ -146,3 +146,60 @@ export async function geocodeLocation(place: {
   if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
   return data as GeocodeResult;
 }
+
+export type IdeaProfile = {
+  idea: string;
+  businessType: string;
+  summary: string;
+  customers: string[];
+  competitorTerms: string[];
+  category: string | null;
+  keyword: string;
+  wiki: { title: string; extract: string; url: string | null } | null;
+  source: "llm" | "rules";
+};
+
+/** What the backend understood the idea to be (LLM when configured) + web context. */
+export async function analyzeIdea(name: string, category?: string): Promise<IdeaProfile> {
+  const api = resolveApiUrl();
+  if (!api) throw new Error("Backend not reachable — start the API to analyze the idea.");
+  const res = await fetch(`${api}/api/analyze-idea`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, category }),
+    signal: AbortSignal.timeout(40_000),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+  return data as IdeaProfile;
+}
+
+export type IdeaResearch = {
+  available: boolean;
+  reason?: string;
+  whatItIs?: string | null;
+  marketSize?: string | null;
+  growth?: string | null;
+  trends?: string[];
+  typicalInvestment?: string | null;
+  leadingPlayers?: string[];
+  regulations?: string[];
+  opportunities?: string[];
+  risks?: string[];
+  sources?: { title: string; url: string }[];
+};
+
+/** Live web research (search-grounded LLM) on the idea, with cited sources. */
+export async function researchIdea(name: string, location?: string): Promise<IdeaResearch> {
+  const api = resolveApiUrl();
+  if (!api) throw new Error("Backend not reachable — start the API for web research.");
+  const res = await fetch(`${api}/api/research-idea`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, location }),
+    signal: AbortSignal.timeout(90_000),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+  return data as IdeaResearch;
+}

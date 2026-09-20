@@ -3,7 +3,8 @@ import express from "express";
 import cors from "cors";
 import { pool, waitForDb } from "./db.js";
 import { chat } from "./consultant.js";
-import { resolveMapsLink, geocode, nearby, siteScore } from "./geo.js";
+import { researchIdea } from "./research.js";
+import { resolveMapsLink, geocode, nearby, siteScore, analyzeIdea } from "./geo.js";
 import { requestLoginCode, verifyLoginCode } from "./auth.js";
 
 const PORT = Number(process.env.PORT || 4000);
@@ -118,6 +119,24 @@ app.post("/api/geocode", async (req, res) => {
     res.json(await geocode({ city, pincode, state, country }));
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
+  }
+});
+
+app.post("/api/analyze-idea", async (req, res) => {
+  try {
+    res.json(await analyzeIdea(req.body ?? {}));
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+});
+
+app.post("/api/research-idea", async (req, res) => {
+  try {
+    const { name, location } = req.body ?? {};
+    if (!name) return res.status(400).json({ message: "name is required" });
+    res.json(await researchIdea(name, location));
+  } catch (err) {
+    res.status(502).json({ message: `Web research failed: ${err.message}` });
   }
 });
 

@@ -3,6 +3,7 @@
 // final URL, falling back to the HTML body. Host-allowlisted to avoid SSRF, and
 // results are cached in-process.
 
+import { understandIdea } from "./idea.js";
 import {
   getCachedGeocode,
   putCachedGeocode,
@@ -339,6 +340,7 @@ const NEARBY_SELECTORS = {
     `["amenity"~"^(clinic|dentist|doctors|pharmacy|hospital)$"]`,
     `["healthcare"]`,
   ],
+  carwash: [`["amenity"="car_wash"]`, `["shop"="car_repair"]`, `["shop"="car_care"]`],
   automotive: [
     `["shop"~"^(car|car_repair|car_parts|tyres|motorcycle)$"]`,
     `["amenity"~"^(fuel|car_wash|charging_station)$"]`,
@@ -434,6 +436,7 @@ const KEYWORD_FAMILY = {
   pet: "pet",
   beauty: "beauty",
   medical: "medical",
+  carwash: "automotive",
   automotive: "automotive",
   services: "services",
   professional: "professional",
@@ -456,7 +459,8 @@ function keywordFor(name = "", category = "") {
   if (/\bclinic|dentist|dental|\bdoctor|physio|therapy|hospital|pharmac|chiropractor|optometrist|optician\b/.test(n)) return "medical";
   if (/pilates|yoga|fitness|gym|wellness|studio/.test(n)) return "fitness";
   if (/\bpet|dog|grooming|\bvet\b|daycare/.test(n)) return "pet";
-  if (/car (repair|wash|dealer)|auto ?repair|\bgarage\b|mechanic|tyre|\btire\b|automotive|motorcycle repair|petrol|gas station|fuel station|ev charging/.test(n)) return "automotive";
+  if (/car ?wash|auto ?wash|vehicle wash|detailing/.test(n)) return "carwash";
+  if (/car (repair|dealer)|auto ?repair|\bgarage\b|mechanic|tyre|\btire\b|automotive|motorcycle repair|petrol|gas station|fuel station|ev charging/.test(n)) return "automotive";
   if (/laundry|dry ?clean|\btailor\b|shoe repair|shoemaker|locksmith|courier|printing|photograph(y|er)/.test(n)) return "services";
   if (/law firm|lawyer|attorney|legal services|accountant|accounting firm|real estate|realtor|estate agent|insurance agency|insurance broker|consult(ing|ancy)|coworking/.test(n)) return "professional";
   if (/cinema|movie theate?r|\btheatre\b|\btheater\b|bowling|arcade|\bmuseum\b|amusement/.test(n)) return "entertainment";
@@ -497,13 +501,15 @@ const GEOAPIFY_KEYWORD_CATEGORIES = {
   wine: "catering.bar,catering.pub",
   bar: "catering.bar,catering.pub",
   restaurant: "catering.restaurant,catering.fast_food",
+  carwash: "service.vehicle.car_wash,service.vehicle.repair",
 };
 
-async function geoapifyNearby(lat, lng, radius, keyword) {
+async function geoapifyNearby(lat, lng, radius, keyword, prof) {
   const apiKey = process.env.GEOAPIFY_API_KEY;
   if (!apiKey) return null;
-  const categories =
-    GEOAPIFY_KEYWORD_CATEGORIES[keyword] || GEOAPIFY_CATEGORIES[KEYWORD_FAMILY[keyword] || "food"];
+  const categories = prof?.keyword === "custom" && prof.geoapifyCategories?.length
+    ? prof.geoapifyCategories.join(",")
+    : GEOAPIFY_KEYWORD_CATEGORIES[keyword] || GEOAPIFY_CATEGORIES[KEYWORD_FAMILY[keyword] || "food"];
   const url = new URL("https://api.geoapify.com/v2/places");
   url.searchParams.set("categories", categories);
   url.searchParams.set("filter", `circle:${lng},${lat},${radius}`);
@@ -617,6 +623,24 @@ function parsePlaces(elements, lat, lng, keyword) {
     .slice(0, 15);
 }
 
+/** Interpret the idea (LLM + web context) -> { keyword, selectors, prof }. */
+async function resolveIdea(name, category) {
+  const prof = await understandIdea(name, category, keywordFor(name, category));
+  const custom = prof.keyword === "custom";
+  const keyword = custom
+    ? "custom-" + String(prof.businessType).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)
+    : prof.keyword;
+  const selectors = custom ? prof.selectors : NEARBY_SELECTORS[keyword];
+  return { keyword, selectors: selectors?.length ? selectors : NEARBY_SELECTORS.restaurant, prof };
+}
+
+export async function analyzeIdea(params) {
+  const name = String(params?.name || "").trim();
+  if (!name) throw err("name is required", 400);
+  const { keyword, prof } = await resolveIdea(name, params?.category);
+  return { idea: name, ...prof, searchKey: keyword };
+}
+
 export async function nearby(params) {
   const lat = Number(params?.lat);
   const lng = Number(params?.lng);
@@ -624,12 +648,11 @@ export async function nearby(params) {
     throw err("valid lat and lng are required", 400);
   }
   const radius = Math.min(5000, Math.max(200, Number(params?.radius) || 2000));
-  const keyword = keywordFor(params?.name, params?.category);
-  const selectors = NEARBY_SELECTORS[keyword] || NEARBY_SELECTORS.restaurant;
+  const { keyword, selectors, prof } = await resolveIdea(params?.name, params?.category);
 
   // v5: bumped so results cached before GEOAPIFY_API_KEY was configured (Overpass-only,
   // pre-fix) aren't served for up to 7 more days — force a fresh, Geoapify-backed lookup.
-  const key = `nearby:v7:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}:${radius}`;
+  const key = `nearby:v9:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}:${radius}`;
   const mem = fromCache(key);
   if (mem) return { ...mem, source: "cache" };
   const dbHit = await getCachedNearby(key);
@@ -646,7 +669,7 @@ export async function nearby(params) {
   // Authenticated Geoapify first when a key is configured — reliable, no shared
   // free-mirror rate limits. Only fall back to Overpass if it's unset or fails.
   try {
-    const geoEls = await geoapifyNearby(lat, lng, radius, keyword);
+    const geoEls = await geoapifyNearby(lat, lng, radius, keyword, prof);
     if (geoEls) {
       competitors = parsePlaces(geoEls, lat, lng, keyword);
       source = "geoapify";
@@ -789,10 +812,10 @@ export async function siteScore(params) {
   }
   const demand = Math.max(0, Math.min(100, Number(params?.demand) || 0));
   const competition = Math.max(0, Math.min(100, Number(params?.competition) || 0));
-  const keyword = keywordFor(params?.name, params?.category);
+  const { keyword, selectors: compSelectors, prof } = await resolveIdea(params?.name, params?.category);
 
   // v4: same reason as the nearby cache bump above.
-  const key = `site:v5:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}`;
+  const key = `site:v6:${lat.toFixed(3)},${lng.toFixed(3)}:${keyword}`;
   const mem = fromCache(key);
   if (mem) return { ...mem, source: "cache" };
   const dbHit = await getCachedNearby(key);
@@ -816,7 +839,7 @@ export async function siteScore(params) {
       lat,
       lng,
       {
-        comp: { radius: 2000, selectors: NEARBY_SELECTORS[keyword] || NEARBY_SELECTORS.restaurant },
+        comp: { radius: 2000, selectors: compSelectors },
         transit: {
           radius: 800,
           selectors: [
@@ -831,7 +854,7 @@ export async function siteScore(params) {
       12_000,
     ),
     throttled(() => placePopulation(lat, lng)),
-    geoapifyNearby(lat, lng, 2000, keyword),
+    geoapifyNearby(lat, lng, 2000, keyword, prof),
   ]);
   if (countsResult.status === "fulfilled") {
     competitorCount = countsResult.value.comp;
